@@ -38,6 +38,7 @@ import com.openlauncher.app.data.SidebarPosition
 import com.openlauncher.app.data.ShortcutConfig
 import com.openlauncher.app.data.GradientDirection
 import com.openlauncher.app.data.UnitSystem
+import com.openlauncher.app.data.LocationRefreshInterval
 import com.openlauncher.app.ui.theme.LocalDayMode
 import com.openlauncher.app.ui.theme.onAccentColor
 import com.openlauncher.app.util.SunriseSunset
@@ -343,6 +344,39 @@ fun SettingsScreen(
                             selectedLabelColor     = onAccentColor(accent)
                         )
                     )
+                }
+            }
+
+            SettingsDivider()
+
+            SettingsRow(
+                label    = "Location Refresh",
+                sublabel = "How often the live neighborhood name updates while driving (Weather + Location)",
+                icon     = Icons.Default.GpsFixed
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LocationRefreshInterval.entries.forEach { interval ->
+                        FilterChip(
+                            selected = settings.locationRefreshInterval == interval,
+                            onClick  = { onUpdate { copy(locationRefreshInterval = interval) } },
+                            label    = {
+                                Text(
+                                    when (interval) {
+                                        LocationRefreshInterval.SEC_30 -> "30s"
+                                        LocationRefreshInterval.MIN_1  -> "1min"
+                                        LocationRefreshInterval.MIN_2  -> "2min"
+                                        LocationRefreshInterval.MIN_5  -> "5min"
+                                    },
+                                    fontSize = 9.sp,
+                                    letterSpacing = 0.5.sp
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = accent,
+                                selectedLabelColor     = onAccentColor(accent)
+                            )
+                        )
+                    }
                 }
             }
         }

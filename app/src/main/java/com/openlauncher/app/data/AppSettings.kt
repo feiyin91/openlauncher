@@ -14,6 +14,17 @@ enum class GradientDirection { TOP_TO_BOTTOM, LEFT_TO_RIGHT, DIAGONAL, RADIAL }
 // collapse to the city-state's own name (Singapore, Monaco, etc).
 enum class LocationDetailLevel { NEIGHBORHOOD, CITY, REGION }
 
+// How often the live place name (Weather + Location widgets) refreshes while
+// driving. Only affects the moving case — parked, refresh is bottlenecked by
+// a separate once-a-minute fallback ticker regardless of this setting, since
+// a stationary GPS provider doesn't emit new location updates at all.
+enum class LocationRefreshInterval(val millis: Long) {
+    SEC_30(30_000L),
+    MIN_1(60_000L),
+    MIN_2(120_000L),
+    MIN_5(300_000L)
+}
+
 enum class DefaultShortcutIcon {
     NONE,
     // Navigation & vehicle
@@ -121,6 +132,7 @@ data class AppSettings(
     val showQuickToggles: Boolean = false,
     val showLocation: Boolean = false,
     val locationDetailLevel: LocationDetailLevel = LocationDetailLevel.NEIGHBORHOOD,
+    val locationRefreshInterval: LocationRefreshInterval = LocationRefreshInterval.SEC_30,
     // "custom" = fall back to the manually-picked accentColor/backgroundColor below;
     // any DASHBOARD_THEMES id = use that preset's accent+surface for the current mode.
     val themeId: String = "ignition",

@@ -813,13 +813,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         startVoltageObserver()
         if (hasSzchoicewayMcu) startHardwareRadioObserver()
         // Weather refreshes every 30 minutes (conditions don't change fast enough
-        // to justify more). Place name refreshes every 30 seconds while moving —
-        // the Nominatim usage policy caps at 1 req/sec, and this is nowhere near
-        // that even at 30s. Note this only actually tightens the refresh while
-        // driving (GPS fires new fixes every few seconds on movement); parked,
-        // the retry cadence is still bottlenecked by the once-a-minute ticker
-        // below, since a stationary GPS provider won't emit new updates at all.
-        // The minute ticker covers the parked case where no location updates arrive.
+        // to justify more). Place name refresh interval is user-configurable
+        // (Settings > Location Refresh, 30s/1min/2min/5min — default 30s); the
+        // Nominatim usage policy caps at 1 req/sec, and even the fastest option
+        // is nowhere near that. Note this only actually tightens the refresh
+        // while driving (GPS fires new fixes every few seconds on movement);
+        // parked, the retry cadence is still bottlenecked by the once-a-minute
+        // ticker below, since a stationary GPS provider won't emit new updates
+        // at all — that ticker covers the parked case where no location updates arrive.
         viewModelScope.launch {
             merge(
                 locationMgr.location.filterNotNull(),
@@ -833,7 +834,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 if (now - lastWeatherFetchMs >= 30 * 60 * 1_000L) {
                     fetchWeather(loc.latitude, loc.longitude, settings.value.unitSystem.name == "METRIC")
                 }
-                if (now - lastPlaceFetchMs >= 30 * 1_000L) {
+                if (now - lastPlaceFetchMs >= settings.value.locationRefreshInterval.millis) {
                     fetchPlaceName(loc.latitude, loc.longitude)
                 }
             }
