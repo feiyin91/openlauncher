@@ -813,10 +813,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         startVoltageObserver()
         if (hasSzchoicewayMcu) startHardwareRadioObserver()
         // Weather refreshes every 30 minutes (conditions don't change fast enough
-        // to justify more). Place name refreshes every 1 minute — a moving car
-        // can cross several neighborhoods in a few minutes, so this stays close
-        // to real-time; the Nominatim usage policy caps at 1 req/sec, and this
-        // is nowhere near that even at 1-minute intervals.
+        // to justify more). Place name refreshes every 30 seconds while moving —
+        // the Nominatim usage policy caps at 1 req/sec, and this is nowhere near
+        // that even at 30s. Note this only actually tightens the refresh while
+        // driving (GPS fires new fixes every few seconds on movement); parked,
+        // the retry cadence is still bottlenecked by the once-a-minute ticker
+        // below, since a stationary GPS provider won't emit new updates at all.
         // The minute ticker covers the parked case where no location updates arrive.
         viewModelScope.launch {
             merge(
@@ -831,7 +833,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 if (now - lastWeatherFetchMs >= 30 * 60 * 1_000L) {
                     fetchWeather(loc.latitude, loc.longitude, settings.value.unitSystem.name == "METRIC")
                 }
-                if (now - lastPlaceFetchMs >= 1 * 60 * 1_000L) {
+                if (now - lastPlaceFetchMs >= 30 * 1_000L) {
                     fetchPlaceName(loc.latitude, loc.longitude)
                 }
             }
