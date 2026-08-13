@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import com.openlauncher.app.model.NowPlayingState
 import com.openlauncher.app.service.MediaListenerService
 import kotlin.math.abs
@@ -68,7 +70,8 @@ fun NowPlayingWidget(
     onRadioCycleFm: () -> Unit = {},
     onRadioSwitchAm: () -> Unit = {},
     onRadioTune: (band: String, freq: Float) -> Unit = { _, _ -> },
-    onAssignRadio: () -> Unit = {}
+    onAssignRadio: () -> Unit = {},
+    showSourceBadge: Boolean = true
 ) {
     val context     = LocalContext.current
     val isConnected by MediaListenerService.isConnected.collectAsState()
@@ -134,6 +137,50 @@ fun NowPlayingWidget(
                 onTapToOpenApp = onTapToOpenApp,
                 modifier = Modifier.fillMaxSize()
             )
+        }
+
+        // 1b. SOURCE APP BADGE (Top-Left, below the "NOW PLAYING" label the
+        // parent HomeScreen draws at TopStart/padding(10,7)) — which app is
+        // playing, plus a Bluetooth glyph when audio is routed there. Useful
+        // mainly because different source apps behave differently (e.g. the
+        // hardware radio app drops playback when backgrounded).
+        if (showSourceBadge && hasContent && selectedSource != "FM/AM Radio") {
+            val sourcePackage = state?.controller?.packageName
+            if (!sourcePackage.isNullOrEmpty()) {
+                val appIcon = remember(sourcePackage) {
+                    runCatching { context.packageManager.getApplicationIcon(sourcePackage).toBitmap().asImageBitmap() }.getOrNull()
+                }
+                var isBluetoothRoute by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        isBluetoothRoute = isAudioRoutedToBluetooth(context)
+                        delay(2000)
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 10.dp, top = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (appIcon != null) {
+                        Image(
+                            bitmap = appIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
+                        )
+                    }
+                    if (isBluetoothRoute) {
+                        Icon(
+                            imageVector = Icons.Default.Bluetooth,
+                            contentDescription = "Bluetooth audio",
+                            tint = (if (isDayMode) Color(0xFF3B7FD1) else accent).copy(alpha = 0.8f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // 2. FLOATING MULTI-SOURCE SELECTOR (Top-Right, always overlayed)
@@ -649,10 +696,10 @@ private fun StandardMinimalPlayer(
                                 androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap())
                             },
                             modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .size(160.dp)
+                                .clip(RoundedCornerShape(12.dp))
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(10.dp))
                     }
                     Text(
                         text = nonNullState.title,
@@ -729,5 +776,21 @@ private fun StandardMinimalPlayer(
 private fun formatMs(ms: Long): String {
     val s = ms / 1000
     return "%d:%02d".format(s / 60, s % 60)
+}
+
+// getDevices() reports audio routing only — no BLUETOOTH_CONNECT permission
+// needed (that's only required to read a device's *name*, which this skips).
+private fun isAudioRoutedToBluetooth(context: android.content.Context): Boolean {
+    if (android.os.Build.VERSION.SDK_INT < 23) return false
+    val am = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return false
+    return runCatching {
+        am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).any { d ->
+            d.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                (android.os.Build.VERSION.SDK_INT >= 31 && (
+                    d.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    d.type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER
+                ))
+        }
+    }.getOrDefault(false)
 }
 

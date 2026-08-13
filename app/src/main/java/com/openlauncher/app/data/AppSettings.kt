@@ -123,7 +123,18 @@ data class AppSettings(
     val locationDetailLevel: LocationDetailLevel = LocationDetailLevel.NEIGHBORHOOD,
     // "custom" = fall back to the manually-picked accentColor/backgroundColor below;
     // any DASHBOARD_THEMES id = use that preset's accent+surface for the current mode.
-    val themeId: String = "ignition"
+    val themeId: String = "ignition",
+    // Weather panel enrichment — merged into the existing panel rather than
+    // adding new ones, each independently toggleable so the panel doesn't
+    // get crowded if the driver only wants some of them.
+    val showWindSpeed: Boolean = true,
+    val showFeelsLike: Boolean = true,
+    val showRainChance: Boolean = true,
+    // Clock panel enrichment
+    val showSunriseSunset: Boolean = true,
+    val showQuickTogglesInClock: Boolean = true,
+    // Now Playing panel enrichment
+    val showNowPlayingSourceBadge: Boolean = true
 )
 
 fun defaultShortcuts() = listOf(

@@ -245,7 +245,8 @@ class MainActivity : ComponentActivity() {
                                         onRadioCycleFm        = { vm.radioCycleFm() },
                                         onRadioSwitchAm       = { vm.radioSwitchAm() },
                                         onRadioTune           = { band, freq -> vm.radioTune(band, freq) },
-                                        onAssignRadio         = { vm.startRadioPicker() }
+                                        onAssignRadio         = { vm.startRadioPicker() },
+                                        onUpdate              = { block -> vm.updateSettings(block) }
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(

@@ -135,6 +135,7 @@ fun HomeScreen(
     onSetSpeedometerDigitalOnly: (Boolean) -> Unit = {},
     onSetLocationDetailLevel: (com.openlauncher.app.data.LocationDetailLevel) -> Unit = {},
     onUpdateSoundPad: (index: Int, pad: com.openlauncher.app.data.SoundPadConfig) -> Unit = { _, _ -> },
+    onUpdate: (AppSettings.() -> AppSettings) -> Unit = {},
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -451,6 +452,10 @@ fun HomeScreen(
                             style      = settings.clockStyle,
                             accent     = accent,
                             isDayMode  = isDayMode,
+                            location   = location,
+                            showSunriseSunset = settings.showSunriseSunset,
+                            showQuickToggles  = settings.showQuickTogglesInClock,
+                            isEditing  = editMode,
                             modifier   = Modifier.fillMaxSize()
                         )
                         "WEATHER" -> WeatherWidget(
@@ -460,6 +465,9 @@ fun HomeScreen(
                             isDayMode  = isDayMode,
                             location   = location,
                             placeName  = placeName,
+                            showWindSpeed  = settings.showWindSpeed,
+                            showFeelsLike  = settings.showFeelsLike,
+                            showRainChance = settings.showRainChance,
                             modifier   = Modifier.fillMaxSize()
                         )
                         "NOW_PLAYING" -> NowPlayingWidget(
@@ -484,7 +492,8 @@ fun HomeScreen(
                             onRadioCycleFm        = onRadioCycleFm,
                             onRadioSwitchAm       = onRadioSwitchAm,
                             onRadioTune           = onRadioTune,
-                            onAssignRadio         = onAssignRadio
+                            onAssignRadio         = onAssignRadio,
+                            showSourceBadge       = settings.showNowPlayingSourceBadge
                         )
                         "TELEMETRY" -> TelemetryWidget(
                             location  = location,
@@ -587,6 +596,12 @@ fun HomeScreen(
             carPlayPackage      = settings.carPlayPackage,
             androidAutoPackage  = settings.androidAutoPackage,
             pipAppPackage       = settings.pipAppPackage,
+            showSunriseSunset   = settings.showSunriseSunset,
+            showQuickTogglesInClock = settings.showQuickTogglesInClock,
+            showWindSpeed       = settings.showWindSpeed,
+            showFeelsLike       = settings.showFeelsLike,
+            showRainChance      = settings.showRainChance,
+            showNowPlayingSourceBadge = settings.showNowPlayingSourceBadge,
             isDayMode           = isDayMode,
             onResize            = { contextMenuId = null; resizingId = id },
             onAssignCarPlay     = { contextMenuId = null; onAssignCarPlay() },
@@ -599,6 +614,7 @@ fun HomeScreen(
             onSetVitalsAsBars   = { onSetVitalsAsBars(it) },
             onSetSpeedometerDigitalOnly = { onSetSpeedometerDigitalOnly(it) },
             onSetLocationDetailLevel = { onSetLocationDetailLevel(it) },
+            onToggle            = { block -> onUpdate(block) },
             onDismiss           = { contextMenuId = null }
         )
     }
@@ -753,6 +769,12 @@ private fun WidgetContextMenu(
     carPlayPackage: String = "",
     androidAutoPackage: String = "",
     pipAppPackage: String = "",
+    showSunriseSunset: Boolean = true,
+    showQuickTogglesInClock: Boolean = true,
+    showWindSpeed: Boolean = true,
+    showFeelsLike: Boolean = true,
+    showRainChance: Boolean = true,
+    showNowPlayingSourceBadge: Boolean = true,
     isDayMode: Boolean,
     onResize: () -> Unit,
     onAssignCarPlay: () -> Unit,
@@ -765,6 +787,7 @@ private fun WidgetContextMenu(
     onSetVitalsAsBars: (Boolean) -> Unit,
     onSetSpeedometerDigitalOnly: (Boolean) -> Unit,
     onSetLocationDetailLevel: (com.openlauncher.app.data.LocationDetailLevel) -> Unit = {},
+    onToggle: (AppSettings.() -> AppSettings) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val menuBg    = if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF111111)
@@ -796,6 +819,22 @@ private fun WidgetContextMenu(
                     icon    = Icons.Default.Watch,
                     tint    = if (clockStyle == ClockStyle.ANALOG) accent else inactiveMenuTint,
                     onClick = { onSetClockStyle(ClockStyle.ANALOG); onDismiss() },
+                    isDayMode = isDayMode
+                )
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (showSunriseSunset) "SUNRISE/SUNSET  ON" else "SUNRISE/SUNSET  OFF",
+                    icon    = Icons.Default.WbSunny,
+                    tint    = if (showSunriseSunset) accent else inactiveMenuTint,
+                    onClick = { onToggle { copy(showSunriseSunset = !showSunriseSunset) } },
+                    isDayMode = isDayMode
+                )
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (showQuickTogglesInClock) "QUICK TOGGLES  ON" else "QUICK TOGGLES  OFF",
+                    icon    = Icons.Default.Wifi,
+                    tint    = if (showQuickTogglesInClock) accent else inactiveMenuTint,
+                    onClick = { onToggle { copy(showQuickTogglesInClock = !showQuickTogglesInClock) } },
                     isDayMode = isDayMode
                 )
             }
@@ -852,7 +891,41 @@ private fun WidgetContextMenu(
                     )
                 }
             }
+            if (widgetId == "WEATHER") {
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (showWindSpeed) "WIND SPEED  ON" else "WIND SPEED  OFF",
+                    icon    = Icons.Default.Air,
+                    tint    = if (showWindSpeed) accent else inactiveMenuTint,
+                    onClick = { onToggle { copy(showWindSpeed = !showWindSpeed) } },
+                    isDayMode = isDayMode
+                )
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (showFeelsLike) "FEELS LIKE  ON" else "FEELS LIKE  OFF",
+                    icon    = Icons.Default.Thermostat,
+                    tint    = if (showFeelsLike) accent else inactiveMenuTint,
+                    onClick = { onToggle { copy(showFeelsLike = !showFeelsLike) } },
+                    isDayMode = isDayMode
+                )
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (showRainChance) "RAIN CHANCE  ON" else "RAIN CHANCE  OFF",
+                    icon    = Icons.Default.WaterDrop,
+                    tint    = if (showRainChance) accent else inactiveMenuTint,
+                    onClick = { onToggle { copy(showRainChance = !showRainChance) } },
+                    isDayMode = isDayMode
+                )
+            }
             if (widgetId == "NOW_PLAYING") {
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (showNowPlayingSourceBadge) "SOURCE BADGE  ON" else "SOURCE BADGE  OFF",
+                    icon    = Icons.Default.Apps,
+                    tint    = if (showNowPlayingSourceBadge) accent else inactiveMenuTint,
+                    onClick = { onToggle { copy(showNowPlayingSourceBadge = !showNowPlayingSourceBadge) } },
+                    isDayMode = isDayMode
+                )
                 HorizontalDivider(color = menuDivider)
                 ContextRow("ASSIGN CARPLAY APP",      Icons.Default.PhoneAndroid,  accent, onAssignCarPlay, isDayMode = isDayMode)
                 if (carPlayPackage.isNotEmpty()) {

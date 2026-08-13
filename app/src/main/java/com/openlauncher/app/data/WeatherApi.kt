@@ -22,9 +22,11 @@ data class CurrentWeather(
 // Open-Meteo returns hourly data as parallel arrays (same index = same hour),
 // not a list of objects — zipped into HourlyPoint list after the response lands.
 data class HourlyBlock(
-    @SerializedName("time")          val time: List<String> = emptyList(),
-    @SerializedName("temperature_2m") val temperature2m: List<Double> = emptyList(),
-    @SerializedName("weathercode")   val weathercode: List<Int> = emptyList()
+    @SerializedName("time")                  val time: List<String> = emptyList(),
+    @SerializedName("temperature_2m")        val temperature2m: List<Double> = emptyList(),
+    @SerializedName("weathercode")           val weathercode: List<Int> = emptyList(),
+    @SerializedName("precipitation_probability") val precipitationProbability: List<Int> = emptyList(),
+    @SerializedName("apparent_temperature")  val apparentTemperature: List<Double> = emptyList()
 )
 
 interface WeatherApiService {
@@ -33,7 +35,7 @@ interface WeatherApiService {
         @Query("latitude")         latitude: Double,
         @Query("longitude")        longitude: Double,
         @Query("current_weather")  currentWeather: Boolean = true,
-        @Query("hourly")           hourly: String = "temperature_2m,weathercode",
+        @Query("hourly")           hourly: String = "temperature_2m,weathercode,precipitation_probability,apparent_temperature",
         @Query("forecast_days")    forecastDays: Int = 2,
         @Query("temperature_unit") temperatureUnit: String = "celsius",
         @Query("windspeed_unit")   windspeedUnit: String = "kmh"

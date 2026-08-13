@@ -25,6 +25,9 @@ fun WeatherWidget(
     isDayMode: Boolean = false,
     location: LocationData? = null,
     placeName: String? = null,
+    showWindSpeed: Boolean = true,
+    showFeelsLike: Boolean = true,
+    showRainChance: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val contentColor = if (isDayMode) Color(0xFF111111) else MaterialTheme.colorScheme.onBackground
@@ -43,15 +46,26 @@ fun WeatherWidget(
                 ) {
                     Text(text = state.conditionIcon, fontSize = 30.sp)
                     Column {
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text          = state.temperatureDisplay(metric),
+                                color         = contentColor,
+                                fontSize      = 28.sp,
+                                fontWeight    = FontWeight.Light,
+                                letterSpacing = 1.sp
+                            )
+                            if (showFeelsLike && Math.round(state.feelsLikeCelsius) != Math.round(state.temperatureCelsius)) {
+                                Text(
+                                    text     = "feels ${state.feelsLikeDisplay(metric)}",
+                                    color    = subColor,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(bottom = 3.dp)
+                                )
+                            }
+                        }
                         Text(
-                            text          = state.temperatureDisplay(metric),
-                            color         = contentColor,
-                            fontSize      = 28.sp,
-                            fontWeight    = FontWeight.Light,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text          = state.conditionLabel.uppercase(),
+                            text          = state.conditionLabel.uppercase() +
+                                (if (showWindSpeed) "  ·  ${state.windspeedDisplay(metric)}" else ""),
                             color         = subColor,
                             fontSize      = 9.sp,
                             letterSpacing = 1.sp
@@ -60,7 +74,7 @@ fun WeatherWidget(
                             Text(
                                 text          = placeName,
                                 color         = subColor.copy(alpha = 0.8f),
-                                fontSize      = 8.sp,
+                                fontSize      = 12.sp,
                                 letterSpacing = 0.3.sp,
                                 maxLines      = 1,
                                 overflow      = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -72,7 +86,7 @@ fun WeatherWidget(
                                     location.longitude.absoluteValue, if (location.longitude >= 0) "E" else "W"
                                 ),
                                 color         = subColor.copy(alpha = 0.7f),
-                                fontSize      = 7.sp,
+                                fontSize      = 10.sp,
                                 letterSpacing = 0.3.sp
                             )
                         }
@@ -104,6 +118,13 @@ fun WeatherWidget(
                                     color    = contentColor,
                                     fontSize = 10.sp
                                 )
+                                if (showRainChance && pt.precipitationChance > 0) {
+                                    Text(
+                                        text     = "${pt.precipitationChance}%",
+                                        color    = if (isDayMode) Color(0xFF3B7FD1) else Color(0xFF6EA8E0),
+                                        fontSize = 7.sp
+                                    )
+                                }
                             }
                         }
                     }

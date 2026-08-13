@@ -442,28 +442,34 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
                         .format(java.util.Date())
                     val hourly = resp.hourly
+                    val currentHourIndices = hourly?.time?.indices
+                        ?.filter { hourly.time[it] >= nowIso }
+                        ?.take(6) ?: emptyList()
                     val forecast = if (hourly != null) {
-                        hourly.time.indices
-                            .filter { hourly.time[it] >= nowIso }
-                            .take(6)
-                            .mapNotNull { i ->
+                        currentHourIndices.mapNotNull { i ->
                                 val hourStr = hourly.time.getOrNull(i)?.takeLast(5)?.take(2) ?: return@mapNotNull null
                                 val hour = hourStr.toIntOrNull() ?: return@mapNotNull null
                                 com.openlauncher.app.model.HourlyPoint(
                                     hour               = hour,
                                     temperatureCelsius = hourly.temperature2m.getOrNull(i) ?: return@mapNotNull null,
                                     weatherCode        = hourly.weathercode.getOrNull(i) ?: 0,
-                                    isDay              = hour in 6..17
+                                    isDay              = hour in 6..17,
+                                    precipitationChance = hourly.precipitationProbability.getOrNull(i) ?: 0
                                 )
                             }
                     } else emptyList()
+                    // First index in the "current hour onward" filter above is the
+                    // present hour itself — reuse it rather than a second lookup.
+                    val feelsLike = currentHourIndices.firstOrNull()
+                        ?.let { hourly?.apparentTemperature?.getOrNull(it) } ?: cw.temperature
 
                     _weather.value = WeatherState(
                         temperatureCelsius = cw.temperature,
                         weatherCode       = cw.weathercode,
                         windspeedKmh      = cw.windspeed,
                         isDay             = cw.isDay == 1,
-                        hourlyForecast    = forecast
+                        hourlyForecast    = forecast,
+                        feelsLikeCelsius  = feelsLike
                     )
                 }
                 _weatherError.value = null
