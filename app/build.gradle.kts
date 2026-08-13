@@ -79,4 +79,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Unit tests — pure-logic functions only (src/test runs on the local JVM,
+    // no Android framework available without Robolectric/instrumentation)
+    testImplementation("junit:junit:4.13.2")
 }

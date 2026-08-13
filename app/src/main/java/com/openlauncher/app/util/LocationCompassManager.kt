@@ -23,8 +23,6 @@ data class LocationData(
     val speedMps: Float = 0f
 )
 
-private const val TWO_MINUTES_MS = 2 * 60 * 1000L
-
 class LocationCompassManager(context: Context) {
 
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -48,28 +46,6 @@ class LocationCompassManager(context: Context) {
     // the two providers alternate. Track the best-accepted fix instead of
     // blindly taking whichever callback fires most recently.
     private var bestLocation: Location? = null
-
-    private fun isBetterLocation(location: Location, current: Location?): Boolean {
-        if (current == null) return true
-        val timeDeltaMs = location.time - current.time
-        val isSignificantlyNewer = timeDeltaMs > TWO_MINUTES_MS
-        val isSignificantlyOlder = timeDeltaMs < -TWO_MINUTES_MS
-        if (isSignificantlyNewer) return true
-        if (isSignificantlyOlder) return false
-
-        val isNewer = timeDeltaMs > 0
-        val accuracyDelta = location.accuracy - current.accuracy
-        val isMoreAccurate = accuracyDelta < 0
-        val isSignificantlyLessAccurate = accuracyDelta > 200f
-        val isFromSameProvider = location.provider == current.provider
-
-        return when {
-            isMoreAccurate -> true
-            isNewer && accuracyDelta <= 0 -> true
-            isNewer && !isSignificantlyLessAccurate && isFromSameProvider -> true
-            else -> false
-        }
-    }
 
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -99,7 +75,8 @@ class LocationCompassManager(context: Context) {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(loc: Location) {
-            if (!isBetterLocation(loc, bestLocation)) return
+            val best = bestLocation
+            if (!isBetterLocation(loc.time, loc.accuracy, loc.provider, best?.time, best?.accuracy, best?.provider)) return
             bestLocation = loc
 
             _location.value = LocationData(
