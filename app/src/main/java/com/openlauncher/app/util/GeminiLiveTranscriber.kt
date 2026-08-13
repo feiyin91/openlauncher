@@ -74,6 +74,13 @@ class GeminiLiveTranscriber(
     private val transcriptBuilder = StringBuilder()
     private var hasDetectedSpeech = false
     private var silentChunkCount = 0
+    // If stop() (auto or manual) fires before the WebSocket handshake has
+    // finished — very possible for a normal-length sentence, since connect
+    // takes ~1-2s — the old code just closed immediately and silently
+    // dropped every buffered chunk, since flushing only ever happened inside
+    // onMessage's "just connected" branch. Now stop() defers the actual
+    // audioStreamEnd+close until that branch runs, instead of abandoning it.
+    private var stopRequested = false
 
     /**
      * Starts capturing mic audio immediately (before the WebSocket is even
@@ -87,6 +94,7 @@ class GeminiLiveTranscriber(
         onError: (String) -> Unit
     ) {
         stopped = false
+        stopRequested = false
         transcriptBuilder.clear()
         hasDetectedSpeech = false
         silentChunkCount = 0
@@ -196,6 +204,10 @@ class GeminiLiveTranscriber(
                         pendingChunks.forEach { sendAudioChunk(it) }
                         pendingChunks.clear()
                     }
+                    if (stopRequested) {
+                        finalizeStop(webSocket)
+                        return
+                    }
                 }
                 val json = runCatching { gson.fromJson(text, JsonObject::class.java) }.getOrNull() ?: return
                 val serverContent = json.getAsJsonObject("serverContent") ?: return
@@ -236,21 +248,29 @@ class GeminiLiveTranscriber(
 
     /** Signals end of speech, then waits before closing — closing immediately
      * races the final inputTranscription message (confirmed in Studio's own
-     * live testing) and drops it. */
+     * live testing) and drops it. If the WebSocket handshake hasn't finished
+     * yet, defers to onMessage's "just connected" branch instead of
+     * abandoning the buffered audio (see stopRequested). */
     fun stop() {
         stopInternal()
+        stopRequested = true
         val ws = webSocket
         if (ws != null && isConnected) {
-            val endMsg = JsonObject().apply {
-                add("realtimeInput", JsonObject().apply { addProperty("audioStreamEnd", true) })
-            }
-            ws.send(gson.toJson(endMsg))
-            scope.launch {
-                delay(CLOSE_DRAIN_DELAY_MS)
-                runCatching { ws.close(1000, null) }
-            }
-        } else {
-            runCatching { ws?.close(1000, null) }
+            finalizeStop(ws)
+        }
+        // else: not connected yet — finalizeStop() runs once onMessage sees
+        // the connection succeed. If it never does, onFailure/the connect
+        // timeout already handle cleanup and the fallback recognizer.
+    }
+
+    private fun finalizeStop(ws: WebSocket) {
+        val endMsg = JsonObject().apply {
+            add("realtimeInput", JsonObject().apply { addProperty("audioStreamEnd", true) })
+        }
+        ws.send(gson.toJson(endMsg))
+        scope.launch {
+            delay(CLOSE_DRAIN_DELAY_MS)
+            runCatching { ws.close(1000, null) }
         }
     }
 
