@@ -95,10 +95,11 @@ private fun DigitalClock(
             modifier            = Modifier.weight(1f).fillMaxHeight(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top row fills the space the plain bottom-anchored layout used to leave empty
+            // Icon sits directly beside the label (not SpaceBetween'd across the
+            // whole row) so it stays anchored to its text instead of drifting to
+            // the far edge on wider panels.
             Row(
-                modifier              = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
