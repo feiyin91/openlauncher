@@ -39,6 +39,7 @@ import com.openlauncher.app.data.ShortcutConfig
 import com.openlauncher.app.data.GradientDirection
 import com.openlauncher.app.data.UnitSystem
 import com.openlauncher.app.ui.theme.LocalDayMode
+import com.openlauncher.app.ui.theme.onAccentColor
 import com.openlauncher.app.util.SunriseSunset
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -297,7 +298,7 @@ fun SettingsScreen(
                             },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = accent,
-                                selectedLabelColor     = Color.Black
+                                selectedLabelColor     = onAccentColor(accent)
                             )
                         )
                     }
@@ -329,7 +330,7 @@ fun SettingsScreen(
                         label    = { Text("Metric", fontSize = 11.sp) },
                         colors   = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = accent,
-                            selectedLabelColor     = Color.Black
+                            selectedLabelColor     = onAccentColor(accent)
                         )
                     )
                     Spacer(Modifier.width(6.dp))
@@ -339,7 +340,7 @@ fun SettingsScreen(
                         label    = { Text("Imperial", fontSize = 11.sp) },
                         colors   = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = accent,
-                            selectedLabelColor     = Color.Black
+                            selectedLabelColor     = onAccentColor(accent)
                         )
                     )
                 }
@@ -428,7 +429,7 @@ fun SettingsScreen(
                             },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = accent,
-                                selectedLabelColor     = Color.Black
+                                selectedLabelColor     = onAccentColor(accent)
                             )
                         )
                     }
@@ -562,7 +563,7 @@ fun SettingsScreen(
                                 },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = accent,
-                                    selectedLabelColor     = Color.Black
+                                    selectedLabelColor     = onAccentColor(accent)
                                 )
                             )
                         }
@@ -617,7 +618,7 @@ fun SettingsScreen(
                             label    = { Text(fontDisplayName(font), fontSize = 9.sp, letterSpacing = 0.5.sp) },
                             colors   = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = accent,
-                                selectedLabelColor     = Color.Black
+                                selectedLabelColor     = onAccentColor(accent)
                             )
                         )
                     }

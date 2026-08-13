@@ -12,6 +12,12 @@ import com.openlauncher.app.data.AppFont
 
 val LocalDayMode = staticCompositionLocalOf { false }
 
+// Contrast-aware label color for content sitting directly on an accent fill
+// (selected FilterChips, etc.) — several of the dashboard theme accents are
+// dark even in light mode (e.g. Instrument Cluster's navy), so a fixed black
+// label goes unreadable on them.
+fun onAccentColor(accent: Color): Color = if (accent.luminance() > 0.5f) Color.Black else Color.White
+
 @Composable
 fun OpenLauncherTheme(
     accent: Color     = AccentWhite,

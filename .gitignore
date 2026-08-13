@@ -38,3 +38,6 @@ Thumbs.db
 
 # Kotlin
 .kotlin/
+
+# Local Claude Code session notes — not for upstream
+CLAUDE.md
