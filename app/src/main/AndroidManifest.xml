@@ -18,6 +18,9 @@
     <!-- Compass / sensors -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
 
+    <!-- Voice assistant: mic capture for speech-to-text -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Media session control (requires notification access grant by user) -->
     <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL" />
 

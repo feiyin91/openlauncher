@@ -3,6 +3,7 @@ package com.openlauncher.app
 import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -16,8 +17,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.openlauncher.app.data.DayNightMode
@@ -79,6 +82,23 @@ class MainActivity : ComponentActivity() {
             val isDayMode = if (settings.dayNightMode == DayNightMode.SYSTEM) !systemIsDark else isDayModeVM
             val pickerSlot      by vm.shortcutPickerSlot.collectAsStateWithLifecycle()
             val appPickerTarget by vm.appPickerTarget.collectAsStateWithLifecycle()
+
+            val voiceState      by vm.voiceState.collectAsStateWithLifecycle()
+            val voiceTranscript by vm.voiceTranscript.collectAsStateWithLifecycle()
+            val voiceReply      by vm.voiceReply.collectAsStateWithLifecycle()
+            val micContext = LocalContext.current
+            val micPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted -> if (granted) vm.startVoiceCommand() }
+            val onStartVoiceCommand: () -> Unit = {
+                if (ContextCompat.checkSelfPermission(micContext, Manifest.permission.RECORD_AUDIO) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    vm.startVoiceCommand()
+                } else {
+                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
 
             // A preset themeId overrides the manually-picked accent/background/font
             // colors below; "custom" (or an unrecognized id) falls through to those.
@@ -246,7 +266,11 @@ class MainActivity : ComponentActivity() {
                                         onRadioSwitchAm       = { vm.radioSwitchAm() },
                                         onRadioTune           = { band, freq -> vm.radioTune(band, freq) },
                                         onAssignRadio         = { vm.startRadioPicker() },
-                                        onUpdate              = { block -> vm.updateSettings(block) }
+                                        onUpdate              = { block -> vm.updateSettings(block) },
+                                        voiceState            = voiceState,
+                                        voiceTranscript       = voiceTranscript,
+                                        voiceReply            = voiceReply,
+                                        onStartVoiceCommand   = onStartVoiceCommand
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(

@@ -141,6 +141,10 @@ fun HomeScreen(
     onSetLocationDetailLevel: (com.openlauncher.app.data.LocationDetailLevel) -> Unit = {},
     onUpdateSoundPad: (index: Int, pad: com.openlauncher.app.data.SoundPadConfig) -> Unit = { _, _ -> },
     onUpdate: (AppSettings.() -> AppSettings) -> Unit = {},
+    voiceState: com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState = com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE,
+    voiceTranscript: String? = null,
+    voiceReply: String? = null,
+    onStartVoiceCommand: () -> Unit = {},
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -222,6 +226,26 @@ fun HomeScreen(
             AnimatedVisibility(visible = isData, enter = fadeIn(), exit = fadeOut()) {
                 Icon(Icons.Default.SignalCellularAlt, "Data", tint = statusIconColor, modifier = Modifier.size(16.dp))
             }
+            Spacer(Modifier.width(8.dp))
+            val micColor = when (voiceState) {
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING -> Color(0xFFE05252)
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.THINKING   -> accent
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.SPEAKING   -> accent
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR       -> Color(0xFFE05252)
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE        -> controlIconColor
+            }
+            IconButton(
+                onClick  = onStartVoiceCommand,
+                enabled  = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector        = Icons.Default.Mic,
+                    contentDescription = "Voice assistant",
+                    tint               = micColor,
+                    modifier           = Modifier.size(16.dp)
+                )
+            }
             if (isLandscape) {
                 Spacer(Modifier.width(8.dp))
                 if (editMode) {
@@ -261,6 +285,34 @@ fun HomeScreen(
                         modifier           = Modifier.size(15.dp)
                     )
                 }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = voiceState != com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE,
+            enter   = fadeIn() + expandVertically(),
+            exit    = fadeOut() + shrinkVertically()
+        ) {
+            val bannerText = when (voiceState) {
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING -> "Listening…"
+                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.THINKING   -> voiceTranscript ?: "Thinking…"
+                else -> voiceReply ?: ""
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(accent.copy(alpha = 0.1f))
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.Mic, null, tint = accent, modifier = Modifier.size(14.dp))
+                Text(
+                    text     = bannerText,
+                    color    = if (isDayMode) Color(0xFF111111) else Color.White,
+                    fontSize = 12.sp,
+                    maxLines = 2
+                )
             }
         }
 

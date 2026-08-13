@@ -6,20 +6,34 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings as AndroidSettings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.openlauncher.app.BuildConfig
 import com.openlauncher.app.data.AppSettings
+import com.openlauncher.app.data.DASHBOARD_THEMES
 import com.openlauncher.app.data.DayNightMode
 import com.openlauncher.app.data.DefaultShortcutIcon
 import com.openlauncher.app.data.GRID_COLS
 import com.openlauncher.app.data.GRID_ROWS
+import com.openlauncher.app.data.GeminiApi
+import com.openlauncher.app.data.GeminiContent
+import com.openlauncher.app.data.GeminiPart
+import com.openlauncher.app.data.GeminiRequest
 import com.openlauncher.app.data.SettingsRepository
 import com.openlauncher.app.data.ShortcutConfig
 import com.openlauncher.app.data.SoundPadConfig
@@ -31,12 +45,16 @@ import com.openlauncher.app.util.SunriseSunset
 import com.openlauncher.app.model.AppInfo
 import com.openlauncher.app.model.NavDestination
 import com.openlauncher.app.model.NowPlayingState
+import com.openlauncher.app.model.VoiceActionResult
 import com.openlauncher.app.model.WeatherState
 import com.openlauncher.app.service.MediaListenerService
 import com.openlauncher.app.util.LocationCompassManager
 import com.openlauncher.app.util.LocationData
+import com.openlauncher.app.util.VoiceContext
+import com.openlauncher.app.util.buildVoiceSystemPrompt
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.util.Locale
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -805,6 +823,208 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         radioObserver?.let { getApplication<Application>().contentResolver.unregisterContentObserver(it) }
         radioObserver = null
         runCatching { getApplication<Application>().unregisterReceiver(batteryReceiver) }
+        speechRecognizer?.destroy()
+        tts?.shutdown()
+    }
+
+    // ── Voice Assistant (Gemini) ─────────────────────────────────────────────
+    // Personal feature, not part of the upstream PR — push-to-talk only (no
+    // wake-word): mic button -> on-device speech-to-text -> Gemini for intent
+    // parsing -> dispatch to a real action -> spoken (TTS) confirmation/answer.
+    enum class VoiceAssistantState { IDLE, LISTENING, THINKING, SPEAKING, ERROR }
+
+    private val _voiceState = MutableStateFlow(VoiceAssistantState.IDLE)
+    val voiceState: StateFlow<VoiceAssistantState> = _voiceState
+
+    private val _voiceTranscript = MutableStateFlow<String?>(null)
+    val voiceTranscript: StateFlow<String?> = _voiceTranscript
+
+    private val _voiceReply = MutableStateFlow<String?>(null)
+    val voiceReply: StateFlow<String?> = _voiceReply
+
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+
+    private fun ensureTts() {
+        if (tts != null) return
+        tts = TextToSpeech(getApplication<Application>()) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) tts?.language = Locale.US
+        }
+    }
+
+    private fun speak(text: String) {
+        ensureTts()
+        _voiceReply.value = text
+        _voiceState.value = VoiceAssistantState.SPEAKING
+        if (ttsReady) {
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "voice_reply")
+        }
+        // Whether or not TTS is ready, don't leave the UI stuck showing
+        // "speaking" forever — settle back to idle after a beat.
+        viewModelScope.launch {
+            delay(400L + text.length * 60L)
+            if (_voiceState.value == VoiceAssistantState.SPEAKING) _voiceState.value = VoiceAssistantState.IDLE
+        }
+    }
+
+    fun startVoiceCommand() {
+        val app = getApplication<Application>()
+        if (!SpeechRecognizer.isRecognitionAvailable(app)) {
+            _voiceState.value = VoiceAssistantState.ERROR
+            _voiceReply.value = "Speech recognition isn't available on this device."
+            return
+        }
+        ensureTts()
+        _voiceTranscript.value = null
+        _voiceReply.value = null
+        _voiceState.value = VoiceAssistantState.LISTENING
+
+        speechRecognizer?.destroy()
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(app).apply {
+            setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) {
+                    _voiceState.value = VoiceAssistantState.ERROR
+                    speak("Didn't catch that.")
+                }
+                override fun onResults(results: Bundle?) {
+                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                    if (text.isNullOrBlank()) {
+                        _voiceState.value = VoiceAssistantState.ERROR
+                        speak("Didn't catch that.")
+                    } else {
+                        _voiceTranscript.value = text
+                        processVoiceCommand(text)
+                    }
+                }
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            })
+        }
+    }
+
+    private fun buildVoiceContext(): VoiceContext {
+        val w = weather.value
+        val loc = location.value
+        val np = nowPlaying.value
+        val fuel = settings.value.fuelLog.takeLast(3)
+        return VoiceContext(
+            currentThemeId  = settings.value.themeId,
+            dayNightMode    = settings.value.dayNightMode.name,
+            use24HourFormat = settings.value.use24HourFormat,
+            weatherSummary  = w?.let {
+                "${it.temperatureDisplay(settings.value.unitSystem.name == "METRIC")}, feels ${it.feelsLikeDisplay(settings.value.unitSystem.name == "METRIC")}, ${it.conditionLabel.lowercase()}, wind ${it.windspeedDisplay(settings.value.unitSystem.name == "METRIC")}"
+            },
+            placeName       = placeName.value,
+            sunriseLocal    = loc?.let { val (r, _) = SunriseSunset.localMinutes(it.latitude, it.longitude); "%02d:%02d".format(r / 60, r % 60) },
+            sunsetLocal     = loc?.let { val (_, s) = SunriseSunset.localMinutes(it.latitude, it.longitude); "%02d:%02d".format(s / 60, s % 60) },
+            nowPlayingSummary = np?.takeIf { it.title.isNotEmpty() }?.let { "'${it.title}' by ${it.artist}" },
+            fuelLogSummary  = fuel.takeIf { it.isNotEmpty() }?.joinToString("; ") {
+                "%.1fL for %.2f at %.0fkm".format(it.volume, it.cost, it.odometerKm)
+            },
+            unitSystem      = settings.value.unitSystem.name
+        )
+    }
+
+    private fun processVoiceCommand(transcript: String) {
+        _voiceState.value = VoiceAssistantState.THINKING
+        viewModelScope.launch {
+            try {
+                val prompt = buildVoiceSystemPrompt(buildVoiceContext())
+                val resp = GeminiApi.service.generateContent(
+                    model  = "gemini-3.5-flash-lite",
+                    apiKey = BuildConfig.GEMINI_API_KEY,
+                    request = GeminiRequest(
+                        contents = listOf(GeminiContent(parts = listOf(GeminiPart(transcript)))),
+                        systemInstruction = GeminiContent(parts = listOf(GeminiPart(prompt)))
+                    )
+                )
+                val raw = resp.text?.trim()
+                    ?.removePrefix("```json")?.removePrefix("```")?.removeSuffix("```")?.trim()
+                val result = raw?.let { runCatching { Gson().fromJson(it, VoiceActionResult::class.java) }.getOrNull() }
+                if (result == null) {
+                    _voiceState.value = VoiceAssistantState.ERROR
+                    speak("Sorry, something went wrong understanding that.")
+                } else {
+                    dispatchVoiceAction(result)
+                }
+            } catch (e: Exception) {
+                _voiceState.value = VoiceAssistantState.ERROR
+                speak("Couldn't reach the assistant — check your connection.")
+            }
+        }
+    }
+
+    private fun dispatchVoiceAction(result: VoiceActionResult) {
+        when (result.action) {
+            "SET_THEME" -> result.theme?.let { id ->
+                if (DASHBOARD_THEMES.any { it.id == id }) updateSettings { copy(themeId = id) }
+            }
+            "SET_DAY_NIGHT_MODE" -> result.dayNightMode?.let { mode ->
+                runCatching { DayNightMode.valueOf(mode) }.getOrNull()?.let { m -> updateSettings { copy(dayNightMode = m) } }
+            }
+            "NAVIGATE_SCREEN" -> result.screen?.let { s ->
+                runCatching { NavDestination.valueOf(s) }.getOrNull()?.let { navigate(it) }
+            }
+            "SET_CLOCK_FORMAT" -> result.clockFormat?.let { fmt ->
+                updateSettings { copy(use24HourFormat = fmt.trim() == "24") }
+            }
+            "SET_VOLUME" -> result.direction?.let { adjustDeviceVolume(it) }
+            "PLAY_MUSIC" -> result.query?.let { playFromSearch(it) }
+            "NAVIGATE_WAZE" -> result.destination?.let { launchWazeNavigation(it) }
+            "ADD_FUEL_ENTRY" -> {
+                val odo = result.odometerKm; val vol = result.volumeLiters; val cost = result.cost
+                if (odo != null && vol != null && cost != null) addFuelEntry(odo, vol, cost)
+            }
+            else -> {} // ANSWER / UNKNOWN — nothing to dispatch, spokenReply covers it
+        }
+        speak(result.spokenReply)
+    }
+
+    private fun adjustDeviceVolume(direction: String) {
+        val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        when (direction.uppercase()) {
+            "UP"   -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0)
+            "DOWN" -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
+            "MUTE" -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
+        }
+    }
+
+    // Standard MediaSession command — the same one "OK Google, play X on Spotify"
+    // uses, so any MediaSession-compatible app already supports it with no
+    // Spotify-specific integration needed on our end.
+    private fun playFromSearch(query: String) {
+        nowPlaying.value?.controller?.transportControls?.playFromSearch(query, null)
+    }
+
+    // Waze's documented URI scheme — no Waze API needed. Exact place/address
+    // only for now; fuzzy "somewhere for dinner"-style search needs a Places
+    // API call this app doesn't make yet (Gemini alone has no live business
+    // data), so the prompt steers those to UNKNOWN instead of guessing.
+    private fun launchWazeNavigation(destination: String) {
+        val app = getApplication<Application>()
+        val uri = Uri.parse("waze://?q=${Uri.encode(destination)}&navigate=yes")
+        val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { app.startActivity(intent) }.onFailure {
+            // Waze not installed — fall back to the generic navigation intent,
+            // which prompts whatever maps app is available.
+            runCatching {
+                app.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${Uri.encode(destination)}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
     }
 
     init {

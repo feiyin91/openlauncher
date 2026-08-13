@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Local-only credential, never committed — read from local.properties (gitignored)
+// so it never ends up in source. Empty string if unset (personal fork only; not
+// part of the upstream PR, so this must not hard-fail a fresh checkout's build).
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val geminiApiKey: String = localProps.getProperty("gemini.api.key", "")
 
 android {
     namespace  = "com.openlauncher.app"
@@ -15,6 +26,7 @@ android {
         targetSdk      = 36
         versionCode    = 6
         versionName    = "0.0.5"
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
     }
 
     buildTypes {
@@ -37,6 +49,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
