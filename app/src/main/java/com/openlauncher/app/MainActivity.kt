@@ -270,7 +270,8 @@ class MainActivity : ComponentActivity() {
                                         voiceState            = voiceState,
                                         voiceTranscript       = voiceTranscript,
                                         voiceReply            = voiceReply,
-                                        onStartVoiceCommand   = onStartVoiceCommand
+                                        onStartVoiceCommand   = onStartVoiceCommand,
+                                        onStopVoiceCommand    = { vm.stopVoiceCommand() }
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(

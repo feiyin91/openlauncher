@@ -145,6 +145,7 @@ fun HomeScreen(
     voiceTranscript: String? = null,
     voiceReply: String? = null,
     onStartVoiceCommand: () -> Unit = {},
+    onStopVoiceCommand: () -> Unit = {},
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -235,12 +236,23 @@ fun HomeScreen(
                 com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE        -> controlIconColor
             }
             IconButton(
-                onClick  = onStartVoiceCommand,
-                enabled  = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE,
+                // Tap to start listening; tap again while LISTENING to signal
+                // "done speaking" (Live API streams continuously — unlike the
+                // fallback SpeechRecognizer, it doesn't auto-detect silence).
+                // Disabled mid-THINKING/SPEAKING — nothing to toggle there.
+                onClick  = {
+                    if (voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING) {
+                        onStopVoiceCommand()
+                    } else {
+                        onStartVoiceCommand()
+                    }
+                },
+                enabled  = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE ||
+                           voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING,
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(
-                    imageVector        = Icons.Default.Mic,
+                    imageVector        = if (voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
                     contentDescription = "Voice assistant",
                     tint               = micColor,
                     modifier           = Modifier.size(16.dp)

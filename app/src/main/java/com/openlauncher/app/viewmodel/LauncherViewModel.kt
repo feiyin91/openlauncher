@@ -48,6 +48,7 @@ import com.openlauncher.app.model.NowPlayingState
 import com.openlauncher.app.model.VoiceActionResult
 import com.openlauncher.app.model.WeatherState
 import com.openlauncher.app.service.MediaListenerService
+import com.openlauncher.app.util.GeminiLiveTranscriber
 import com.openlauncher.app.util.LocationCompassManager
 import com.openlauncher.app.util.LocationData
 import com.openlauncher.app.util.VoiceContext
@@ -869,16 +870,50 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private var liveTranscriber: GeminiLiveTranscriber? = null
+
+    // Gemini Live is tried first — meaningfully better at road/shop/place
+    // names than Android's on-device recognizer (the same reason Harvard
+    // Studio's lesson-note transcription moved off browser ASR for musical
+    // terms). Falls back to on-device SpeechRecognizer on any failure
+    // (offline, connect timeout, mic unavailable) so a voice command still
+    // works with no signal, just with lower proper-noun accuracy.
     fun startVoiceCommand() {
-        val app = getApplication<Application>()
-        if (!SpeechRecognizer.isRecognitionAvailable(app)) {
-            _voiceState.value = VoiceAssistantState.ERROR
-            _voiceReply.value = "Speech recognition isn't available on this device."
-            return
-        }
         ensureTts()
         _voiceTranscript.value = null
         _voiceReply.value = null
+        _voiceState.value = VoiceAssistantState.LISTENING
+
+        if (BuildConfig.GEMINI_API_KEY.isBlank()) {
+            startVoiceCommandFallback()
+            return
+        }
+
+        liveTranscriber = GeminiLiveTranscriber(BuildConfig.GEMINI_API_KEY, viewModelScope).also {
+            it.start(
+                onTranscriptUpdate = { partial -> _voiceTranscript.value = partial },
+                onFinal = { text ->
+                    _voiceTranscript.value = text
+                    processVoiceCommand(text)
+                },
+                onError = { startVoiceCommandFallback() }
+            )
+        }
+    }
+
+    /** Stops an in-progress Live listen (e.g. driver taps the mic again to finish speaking). */
+    fun stopVoiceCommand() {
+        liveTranscriber?.stop()
+        speechRecognizer?.stopListening() // no-op if the fallback path wasn't the one running
+    }
+
+    private fun startVoiceCommandFallback() {
+        val app = getApplication<Application>()
+        if (!SpeechRecognizer.isRecognitionAvailable(app)) {
+            _voiceState.value = VoiceAssistantState.ERROR
+            speak("Speech recognition isn't available on this device.")
+            return
+        }
         _voiceState.value = VoiceAssistantState.LISTENING
 
         speechRecognizer?.destroy()
