@@ -71,6 +71,7 @@ class SettingsRepository(private val context: Context) {
         val SHOW_SUNRISE_SUNSET   = booleanPreferencesKey("show_sunrise_sunset")
         val SHOW_QUICK_TOGGLES_IN_CLOCK = booleanPreferencesKey("show_quick_toggles_in_clock")
         val SHOW_NOW_PLAYING_SOURCE_BADGE = booleanPreferencesKey("show_now_playing_source_badge")
+        val USE_24_HOUR_FORMAT    = booleanPreferencesKey("use_24_hour_format")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data
@@ -162,7 +163,8 @@ class SettingsRepository(private val context: Context) {
                 showRainChance   = prefs[Keys.SHOW_RAIN_CHANCE] ?: defaults.showRainChance,
                 showSunriseSunset = prefs[Keys.SHOW_SUNRISE_SUNSET] ?: defaults.showSunriseSunset,
                 showQuickTogglesInClock = prefs[Keys.SHOW_QUICK_TOGGLES_IN_CLOCK] ?: defaults.showQuickTogglesInClock,
-                showNowPlayingSourceBadge = prefs[Keys.SHOW_NOW_PLAYING_SOURCE_BADGE] ?: defaults.showNowPlayingSourceBadge
+                showNowPlayingSourceBadge = prefs[Keys.SHOW_NOW_PLAYING_SOURCE_BADGE] ?: defaults.showNowPlayingSourceBadge,
+                use24HourFormat  = prefs[Keys.USE_24_HOUR_FORMAT] ?: defaults.use24HourFormat
             )
     }
 
@@ -231,6 +233,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.SHOW_SUNRISE_SUNSET] = s.showSunriseSunset
             prefs[Keys.SHOW_QUICK_TOGGLES_IN_CLOCK] = s.showQuickTogglesInClock
             prefs[Keys.SHOW_NOW_PLAYING_SOURCE_BADGE] = s.showNowPlayingSourceBadge
+            prefs[Keys.USE_24_HOUR_FORMAT] = s.use24HourFormat
     }
 
     suspend fun resetToDefaults() {

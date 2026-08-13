@@ -456,6 +456,7 @@ fun HomeScreen(
                             showSunriseSunset = settings.showSunriseSunset,
                             showQuickToggles  = settings.showQuickTogglesInClock,
                             isEditing  = editMode,
+                            use24HourFormat = settings.use24HourFormat,
                             modifier   = Modifier.fillMaxSize()
                         )
                         "WEATHER" -> WeatherWidget(
@@ -596,6 +597,7 @@ fun HomeScreen(
             carPlayPackage      = settings.carPlayPackage,
             androidAutoPackage  = settings.androidAutoPackage,
             pipAppPackage       = settings.pipAppPackage,
+            use24HourFormat     = settings.use24HourFormat,
             showSunriseSunset   = settings.showSunriseSunset,
             showQuickTogglesInClock = settings.showQuickTogglesInClock,
             showWindSpeed       = settings.showWindSpeed,
@@ -769,6 +771,7 @@ private fun WidgetContextMenu(
     carPlayPackage: String = "",
     androidAutoPackage: String = "",
     pipAppPackage: String = "",
+    use24HourFormat: Boolean = true,
     showSunriseSunset: Boolean = true,
     showQuickTogglesInClock: Boolean = true,
     showWindSpeed: Boolean = true,
@@ -819,6 +822,14 @@ private fun WidgetContextMenu(
                     icon    = Icons.Default.Watch,
                     tint    = if (clockStyle == ClockStyle.ANALOG) accent else inactiveMenuTint,
                     onClick = { onSetClockStyle(ClockStyle.ANALOG); onDismiss() },
+                    isDayMode = isDayMode
+                )
+                HorizontalDivider(color = menuDivider)
+                ContextRow(
+                    label   = if (use24HourFormat) "24-HOUR" else "12-HOUR",
+                    icon    = Icons.Default.Schedule,
+                    tint    = accent,
+                    onClick = { onToggle { copy(use24HourFormat = !use24HourFormat) } },
                     isDayMode = isDayMode
                 )
                 HorizontalDivider(color = menuDivider)

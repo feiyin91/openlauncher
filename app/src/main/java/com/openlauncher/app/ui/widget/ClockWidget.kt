@@ -41,6 +41,7 @@ fun ClockWidget(
     showSunriseSunset: Boolean = true,
     showQuickToggles: Boolean = true,
     isEditing: Boolean = false,
+    use24HourFormat: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var calendar by remember { mutableStateOf(Calendar.getInstance()) }
@@ -60,7 +61,8 @@ fun ClockWidget(
             ClockStyle.DIGITAL -> DigitalClock(
                 cal = calendar, contentColor = contentColor, subColor = subColor, accent = accent,
                 location = location, showSunriseSunset = showSunriseSunset,
-                showQuickToggles = showQuickToggles, isDayMode = isDayMode, isEditing = isEditing
+                showQuickToggles = showQuickToggles, isDayMode = isDayMode, isEditing = isEditing,
+                use24HourFormat = use24HourFormat
             )
             ClockStyle.ANALOG  -> AnalogClock(calendar, accent, isDayMode)
         }
@@ -77,11 +79,18 @@ private fun DigitalClock(
     showSunriseSunset: Boolean,
     showQuickToggles: Boolean,
     isDayMode: Boolean,
-    isEditing: Boolean
+    isEditing: Boolean,
+    use24HourFormat: Boolean
 ) {
     val hour   = cal.get(Calendar.HOUR_OF_DAY)
     val minute = cal.get(Calendar.MINUTE)
     val isDaylightHour = hour in 6..17
+    val timeText = if (use24HourFormat) {
+        "%02d:%02d".format(hour, minute)
+    } else {
+        val h12 = when (hour % 12) { 0 -> 12; else -> hour % 12 }
+        "%d:%02d %s".format(h12, minute, if (hour < 12) "AM" else "PM")
+    }
 
     Row(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 14.dp)) {
         Column(
@@ -127,9 +136,9 @@ private fun DigitalClock(
                     Spacer(Modifier.height(4.dp))
                 }
                 Text(
-                    text          = "%02d:%02d".format(hour, minute),
+                    text          = timeText,
                     color         = contentColor,
-                    fontSize      = 44.sp,
+                    fontSize      = if (use24HourFormat) 44.sp else 36.sp,
                     fontWeight    = FontWeight.Light,
                     letterSpacing = 1.sp
                 )

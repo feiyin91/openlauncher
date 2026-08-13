@@ -134,7 +134,8 @@ data class AppSettings(
     val showSunriseSunset: Boolean = true,
     val showQuickTogglesInClock: Boolean = true,
     // Now Playing panel enrichment
-    val showNowPlayingSourceBadge: Boolean = true
+    val showNowPlayingSourceBadge: Boolean = true,
+    val use24HourFormat: Boolean = true
 )
 
 fun defaultShortcuts() = listOf(
