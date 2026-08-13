@@ -222,14 +222,29 @@ class GeminiLiveTranscriber(
                 if (connectTimedOut) return
                 timeoutJob.cancel()
                 stopInternal()
-                onError(t.message ?: "Connection to Gemini Live failed.")
+                // HTTP code + body snippet (when present) distinguishes an
+                // auth/config rejection (4xx before the WS upgrade even
+                // completes) from a plain network failure — the two need
+                // very different fixes and "Connection failed" alone can't
+                // tell them apart.
+                val httpDetail = response?.let { r ->
+                    val bodySnippet = runCatching { r.body?.string()?.take(150) }.getOrNull()
+                    "HTTP ${r.code}${if (!bodySnippet.isNullOrBlank()) ": $bodySnippet" else ""}"
+                }
+                val reason = httpDetail ?: (t::class.simpleName + (t.message?.let { ": $it" } ?: ""))
+                onError(reason)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (connectTimedOut) return
                 val finalText = transcriptBuilder.toString().trim()
-                if (finalText.isNotEmpty()) onFinal(finalText)
-                else onError("Didn't catch anything.")
+                if (finalText.isNotEmpty()) {
+                    onFinal(finalText)
+                } else if (code != 1000) {
+                    onError("Closed abnormally: $code $reason")
+                } else {
+                    onError("No speech detected.")
+                }
             }
         })
     }

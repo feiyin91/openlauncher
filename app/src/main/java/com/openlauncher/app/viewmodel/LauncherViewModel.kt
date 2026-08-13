@@ -896,7 +896,21 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     _voiceTranscript.value = text
                     processVoiceCommand(text)
                 },
-                onError = { startVoiceCommandFallback() }
+                // Was previously a silent fallback — if Live keeps failing
+                // (auth, connection, whatever) every attempt would quietly
+                // become the less-accurate on-device recognizer with no way
+                // to tell from the outside. Surface the real reason on-screen
+                // for a moment so a "why does this keep missing" report can
+                // point at the actual cause instead of guessing.
+                onError = { reason ->
+                    android.util.Log.w("OpenLauncherVoice", "Gemini Live failed, falling back: $reason")
+                    _voiceState.value = VoiceAssistantState.ERROR
+                    _voiceReply.value = "Live: $reason"
+                    viewModelScope.launch {
+                        delay(1500)
+                        startVoiceCommandFallback()
+                    }
+                }
             )
         }
     }
