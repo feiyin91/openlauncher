@@ -47,6 +47,16 @@ class GeminiLiveTranscriber(
         private const val SAMPLE_RATE = 16000
         private const val CONNECT_TIMEOUT_MS = 5_000L
         private const val CLOSE_DRAIN_DELAY_MS = 2_000L
+        // Simple energy-based VAD, not ML-based — cheap and good enough to
+        // detect "driver stopped talking." Threshold is a starting point for
+        // in-cabin road noise; may need retuning once tested live in the car.
+        private const val SILENCE_RMS_THRESHOLD = 700.0
+        private const val CHUNK_MS = 100
+        private const val SILENCE_MS_TO_AUTO_STOP = 1_500
+        private const val SILENT_CHUNKS_TO_AUTO_STOP = SILENCE_MS_TO_AUTO_STOP / CHUNK_MS
+        // Safety cap in case VAD never trips (e.g. continuous background noise
+        // above threshold) — don't listen forever and drain the mic/battery.
+        private const val MAX_LISTEN_MS = 20_000L
     }
 
     private val client = OkHttpClient.Builder()
@@ -62,6 +72,8 @@ class GeminiLiveTranscriber(
     private var stopped = false
     private val pendingChunks = mutableListOf<String>() // base64, buffered until connected
     private val transcriptBuilder = StringBuilder()
+    private var hasDetectedSpeech = false
+    private var silentChunkCount = 0
 
     /**
      * Starts capturing mic audio immediately (before the WebSocket is even
@@ -76,6 +88,8 @@ class GeminiLiveTranscriber(
     ) {
         stopped = false
         transcriptBuilder.clear()
+        hasDetectedSpeech = false
+        silentChunkCount = 0
 
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
@@ -103,6 +117,23 @@ class GeminiLiveTranscriber(
             while (!stopped) {
                 val read = record.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
+
+                // RMS on the raw samples, before byte-packing — cheap way to
+                // tell "driver is talking" from "driver stopped."
+                var sumSquares = 0.0
+                for (i in 0 until read) sumSquares += buffer[i].toDouble() * buffer[i]
+                val rms = kotlin.math.sqrt(sumSquares / read)
+                if (rms >= SILENCE_RMS_THRESHOLD) {
+                    hasDetectedSpeech = true
+                    silentChunkCount = 0
+                } else if (hasDetectedSpeech) {
+                    silentChunkCount++
+                    if (silentChunkCount >= SILENT_CHUNKS_TO_AUTO_STOP) {
+                        stop()
+                        break
+                    }
+                }
+
                 val bytes = ByteArray(read * 2)
                 for (i in 0 until read) {
                     val s = buffer[i].toInt()
@@ -118,6 +149,13 @@ class GeminiLiveTranscriber(
                     }
                 }
             }
+        }
+
+        // Safety cap — if VAD never trips (e.g. sustained road/cabin noise
+        // above threshold), don't listen forever.
+        scope.launch {
+            delay(MAX_LISTEN_MS)
+            if (!stopped) stop()
         }
 
         val url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=$apiKey"
