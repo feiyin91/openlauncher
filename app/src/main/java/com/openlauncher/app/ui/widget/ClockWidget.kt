@@ -27,8 +27,6 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Bluetooth
 
@@ -127,10 +125,10 @@ private fun DigitalClock(
                         SunriseSunset.localMinutes(location.latitude, location.longitude)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.ArrowUpward, null, tint = subColor, modifier = Modifier.size(10.dp))
+                        Text(text = "🌅", fontSize = 11.sp) // 🌅 sunrise
                         Text(text = "%02d:%02d".format(riseMin / 60, riseMin % 60), color = subColor, fontSize = 10.sp)
                         Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Default.ArrowDownward, null, tint = subColor, modifier = Modifier.size(10.dp))
+                        Text(text = "🌇", fontSize = 11.sp) // 🌇 sunset
                         Text(text = "%02d:%02d".format(setMin / 60, setMin % 60), color = subColor, fontSize = 10.sp)
                     }
                     Spacer(Modifier.height(4.dp))

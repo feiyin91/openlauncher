@@ -76,7 +76,12 @@ fun WeatherWidget(
                                 color         = subColor.copy(alpha = 0.8f),
                                 fontSize      = 12.sp,
                                 letterSpacing = 0.3.sp,
-                                maxLines      = 1,
+                                lineHeight    = 14.sp,
+                                // Wraps to a 2nd line only when the full name doesn't
+                                // fit on one — short names ("Singapore, Kallang") stay
+                                // single-line, long ones ("Singapore, Woodlands South")
+                                // get the space instead of being cut off mid-word.
+                                maxLines      = 2,
                                 overflow      = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         } else if (location != null) {

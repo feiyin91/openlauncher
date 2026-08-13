@@ -168,7 +168,7 @@ fun NowPlayingWidget(
                         Image(
                             bitmap = appIcon,
                             contentDescription = null,
-                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
+                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(9.dp))
                         )
                     }
                     if (isBluetoothRoute) {
@@ -696,7 +696,7 @@ private fun StandardMinimalPlayer(
                                 androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap())
                             },
                             modifier = Modifier
-                                .size(160.dp)
+                                .size(180.dp)
                                 .clip(RoundedCornerShape(12.dp))
                         )
                         Spacer(Modifier.height(10.dp))
