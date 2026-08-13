@@ -9,6 +9,10 @@ enum class AppFont { SYSTEM, JETBRAINS_MONO, SOURCE_CODE_PRO }
 enum class DayNightMode { DARK, LIGHT, AUTO, SYSTEM }
 enum class SidebarPosition { LEFT, RIGHT, BOTTOM }
 enum class GradientDirection { TOP_TO_BOTTOM, LEFT_TO_RIGHT, DIAGONAL, RADIAL }
+// How granular the reverse-geocoded place name is. NEIGHBORHOOD is the finest
+// (e.g. "Boon Keng") — needed in dense cities where CITY/REGION both just
+// collapse to the city-state's own name (Singapore, Monaco, etc).
+enum class LocationDetailLevel { NEIGHBORHOOD, CITY, REGION }
 
 enum class DefaultShortcutIcon {
     NONE,
@@ -116,6 +120,7 @@ data class AppSettings(
     val fuelLog: List<FuelEntry> = emptyList(),
     val showQuickToggles: Boolean = false,
     val showLocation: Boolean = false,
+    val locationDetailLevel: LocationDetailLevel = LocationDetailLevel.NEIGHBORHOOD,
     // "custom" = fall back to the manually-picked accentColor/backgroundColor below;
     // any DASHBOARD_THEMES id = use that preset's accent+surface for the current mode.
     val themeId: String = "ignition"

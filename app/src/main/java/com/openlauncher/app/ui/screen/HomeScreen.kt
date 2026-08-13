@@ -133,6 +133,7 @@ fun HomeScreen(
     onSetClockStyle: (ClockStyle) -> Unit,
     onSetVitalsAsBars: (Boolean) -> Unit = {},
     onSetSpeedometerDigitalOnly: (Boolean) -> Unit = {},
+    onSetLocationDetailLevel: (com.openlauncher.app.data.LocationDetailLevel) -> Unit = {},
     onUpdateSoundPad: (index: Int, pad: com.openlauncher.app.data.SoundPadConfig) -> Unit = { _, _ -> },
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
@@ -582,6 +583,7 @@ fun HomeScreen(
             clockStyle          = settings.clockStyle,
             vitalsAsBars        = settings.vitalsAsBars,
             speedometerDigitalOnly = settings.speedometerDigitalOnly,
+            locationDetailLevel = settings.locationDetailLevel,
             carPlayPackage      = settings.carPlayPackage,
             androidAutoPackage  = settings.androidAutoPackage,
             pipAppPackage       = settings.pipAppPackage,
@@ -596,6 +598,7 @@ fun HomeScreen(
             onSetClockStyle     = { onSetClockStyle(it) },
             onSetVitalsAsBars   = { onSetVitalsAsBars(it) },
             onSetSpeedometerDigitalOnly = { onSetSpeedometerDigitalOnly(it) },
+            onSetLocationDetailLevel = { onSetLocationDetailLevel(it) },
             onDismiss           = { contextMenuId = null }
         )
     }
@@ -746,6 +749,7 @@ private fun WidgetContextMenu(
     clockStyle: ClockStyle,
     vitalsAsBars: Boolean,
     speedometerDigitalOnly: Boolean,
+    locationDetailLevel: com.openlauncher.app.data.LocationDetailLevel = com.openlauncher.app.data.LocationDetailLevel.NEIGHBORHOOD,
     carPlayPackage: String = "",
     androidAutoPackage: String = "",
     pipAppPackage: String = "",
@@ -760,6 +764,7 @@ private fun WidgetContextMenu(
     onSetClockStyle: (ClockStyle) -> Unit,
     onSetVitalsAsBars: (Boolean) -> Unit,
     onSetSpeedometerDigitalOnly: (Boolean) -> Unit,
+    onSetLocationDetailLevel: (com.openlauncher.app.data.LocationDetailLevel) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val menuBg    = if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF111111)
@@ -829,6 +834,23 @@ private fun WidgetContextMenu(
                     onClick = { onSetSpeedometerDigitalOnly(true); onDismiss() },
                     isDayMode = isDayMode
                 )
+            }
+            if (widgetId == "LOCATION") {
+                val levels = com.openlauncher.app.data.LocationDetailLevel.entries
+                levels.forEach { level ->
+                    HorizontalDivider(color = menuDivider)
+                    ContextRow(
+                        label   = when (level) {
+                            com.openlauncher.app.data.LocationDetailLevel.NEIGHBORHOOD -> "NEIGHBORHOOD"
+                            com.openlauncher.app.data.LocationDetailLevel.CITY         -> "CITY"
+                            com.openlauncher.app.data.LocationDetailLevel.REGION       -> "REGION / STATE"
+                        },
+                        icon    = Icons.Default.Explore,
+                        tint    = if (locationDetailLevel == level) accent else inactiveMenuTint,
+                        onClick = { onSetLocationDetailLevel(level); onDismiss() },
+                        isDayMode = isDayMode
+                    )
+                }
             }
             if (widgetId == "NOW_PLAYING") {
                 HorizontalDivider(color = menuDivider)

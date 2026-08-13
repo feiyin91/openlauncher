@@ -8,12 +8,18 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 data class NominatimAddress(
-    @SerializedName("suburb")  val suburb: String? = null,
-    @SerializedName("city")    val city: String? = null,
-    @SerializedName("town")    val town: String? = null,
-    @SerializedName("village") val village: String? = null,
-    @SerializedName("county")  val county: String? = null,
-    @SerializedName("state")   val state: String? = null
+    // Finest → coarsest. Dense cities (e.g. Singapore, where "city" and "country"
+    // both just resolve to "Singapore") only surface real granularity through
+    // neighbourhood/quarter — suburb alone isn't enough there.
+    @SerializedName("neighbourhood")  val neighbourhood: String? = null,
+    @SerializedName("quarter")        val quarter: String? = null,
+    @SerializedName("suburb")         val suburb: String? = null,
+    @SerializedName("city_district")  val cityDistrict: String? = null,
+    @SerializedName("city")           val city: String? = null,
+    @SerializedName("town")           val town: String? = null,
+    @SerializedName("village")        val village: String? = null,
+    @SerializedName("county")         val county: String? = null,
+    @SerializedName("state")          val state: String? = null
 )
 
 data class NominatimResponse(
@@ -27,7 +33,12 @@ interface NominatimApiService {
         @Query("lat") lat: Double,
         @Query("lon") lon: Double,
         @Query("format") format: String = "json",
-        @Query("zoom") zoom: Int = 12,
+        // Always request the finest zoom (18 = building-level) — Nominatim still
+        // returns the full coarse-to-fine address hierarchy either way, so this
+        // just ensures the fine fields (neighbourhood/quarter) are populated when
+        // they exist. Which field to actually display is a client-side choice —
+        // see LocationDetailLevel.
+        @Query("zoom") zoom: Int = 18,
         @Query("addressdetails") addressDetails: Int = 1
     ): NominatimResponse
 }

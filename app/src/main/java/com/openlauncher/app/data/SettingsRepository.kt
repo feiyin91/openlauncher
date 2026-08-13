@@ -64,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         val SHOW_QUICK_TOGGLES    = booleanPreferencesKey("show_quick_toggles")
         val THEME_ID              = stringPreferencesKey("theme_id")
         val SHOW_LOCATION         = booleanPreferencesKey("show_location")
+        val LOCATION_DETAIL_LEVEL = stringPreferencesKey("location_detail_level")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data
@@ -148,7 +149,8 @@ class SettingsRepository(private val context: Context) {
                 } ?: defaults.fuelLog,
                 showQuickToggles = prefs[Keys.SHOW_QUICK_TOGGLES] ?: defaults.showQuickToggles,
                 themeId          = prefs[Keys.THEME_ID] ?: defaults.themeId,
-                showLocation     = prefs[Keys.SHOW_LOCATION] ?: defaults.showLocation
+                showLocation     = prefs[Keys.SHOW_LOCATION] ?: defaults.showLocation,
+                locationDetailLevel = prefs[Keys.LOCATION_DETAIL_LEVEL]?.let { runCatching { LocationDetailLevel.valueOf(it) }.getOrNull() } ?: defaults.locationDetailLevel
             )
     }
 
@@ -210,6 +212,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.SHOW_QUICK_TOGGLES] = s.showQuickToggles
             prefs[Keys.THEME_ID]           = s.themeId
             prefs[Keys.SHOW_LOCATION]      = s.showLocation
+            prefs[Keys.LOCATION_DETAIL_LEVEL] = s.locationDetailLevel.name
     }
 
     suspend fun resetToDefaults() {

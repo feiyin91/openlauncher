@@ -482,15 +482,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             try {
                 val resp = com.openlauncher.app.data.NominatimApi.service.reverseGeocode(lat, lon)
                 val addr = resp.address
-                val locality = addr?.suburb ?: addr?.city ?: addr?.town ?: addr?.village ?: addr?.county
-                val state = addr?.state
-                // Keep the previous value on a genuinely empty response rather than
-                // blanking a widget that already had something useful to show.
-                val resolved = when {
-                    locality != null && state != null && state != locality -> "$locality, $state"
-                    locality != null -> locality
-                    else -> resp.displayName?.split(",")?.map { it.trim() }?.take(2)?.joinToString(", ")
-                }
+                // Always request finest detail from the API; which fields we actually
+                // show is a client-side choice per locationDetailLevel, so switching
+                // the setting doesn't need a fresh network call.
+                //
+                // "Broader" is the wrapper locality — city, or the nearest thing to
+                // it (falls back to state/county for places with no city field, e.g.
+                // some rural areas). "Fine" is the specific neighbourhood/quarter.
+                // Paired as "Broader, Fine" — e.g. "Singapore, Boon Keng" or
+                // "Johor Bahru, Megah Ria" — not paired with state, which is often
+                // too coarse to add anything (and Singapore has no state at all).
+                val broader = addr?.city ?: addr?.town ?: addr?.village ?: addr?.county ?: addr?.state
+                val fine = addr?.neighbourhood ?: addr?.quarter ?: addr?.suburb ?: addr?.cityDistrict
+                val resolved = when (settings.value.locationDetailLevel) {
+                    com.openlauncher.app.data.LocationDetailLevel.NEIGHBORHOOD -> when {
+                        fine != null && broader != null && fine != broader -> "$broader, $fine"
+                        fine != null -> fine
+                        else -> broader
+                    }
+                    com.openlauncher.app.data.LocationDetailLevel.CITY -> broader
+                    com.openlauncher.app.data.LocationDetailLevel.REGION -> addr?.state ?: addr?.county ?: broader
+                } ?: resp.displayName?.split(",")?.map { it.trim() }?.take(2)?.joinToString(", ")
                 if (resolved != null) _placeName.value = resolved
             } catch (_: Exception) {
                 // transient network hiccup — leave the last known place name showing
