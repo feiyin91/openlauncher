@@ -426,6 +426,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val weatherError: StateFlow<String?> = _weatherError
 
     private var weatherJob: Job? = null
+    // Stamped on successful fetch only (see fetchWeather/fetchPlaceName) — if these
+    // were stamped on *attempt*, a single failure right at boot (network not up yet)
+    // would lock the panel empty for a full throttle window instead of retrying.
+    private var lastWeatherFetchMs = 0L
+    private var lastPlaceFetchMs = 0L
 
     fun fetchWeather(lat: Double, lon: Double, metric: Boolean) {
         weatherJob?.cancel()
@@ -473,8 +478,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
                 _weatherError.value = null
+                lastWeatherFetchMs = System.currentTimeMillis()
             } catch (e: Exception) {
                 _weatherError.value = e.message
+                // Deliberately not stamping lastWeatherFetchMs — leaving it at its
+                // last successful value means the next location/minute tick retries
+                // immediately instead of waiting out the full throttle window.
             }
         }
     }
@@ -509,9 +518,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     com.openlauncher.app.data.LocationDetailLevel.CITY -> broader
                     com.openlauncher.app.data.LocationDetailLevel.REGION -> addr?.state ?: addr?.county ?: broader
                 } ?: resp.displayName?.split(",")?.map { it.trim() }?.take(2)?.joinToString(", ")
-                if (resolved != null) _placeName.value = resolved
+                if (resolved != null) {
+                    _placeName.value = resolved
+                    lastPlaceFetchMs = System.currentTimeMillis()
+                }
             } catch (_: Exception) {
-                // transient network hiccup — leave the last known place name showing
+                // transient network hiccup — leave the last known place name showing,
+                // and leave lastPlaceFetchMs unstamped so the next tick retries soon
             }
         }
     }
@@ -804,19 +817,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         // can cross several neighborhoods in that span, 30 minutes reads stale.
         // The minute ticker covers the parked case where no location updates arrive.
         viewModelScope.launch {
-            var lastWeatherFetchMs = 0L
-            var lastPlaceFetchMs = 0L
             merge(
                 locationMgr.location.filterNotNull(),
                 minuteTicker.mapNotNull { locationMgr.location.value }
             ).collect { loc ->
                 val now = System.currentTimeMillis()
+                // lastWeatherFetchMs/lastPlaceFetchMs are only stamped on a *successful*
+                // fetch (see fetchWeather/fetchPlaceName), so a failed attempt — e.g. right
+                // at boot before the network is up — retries on the next tick instead of
+                // locking the panel empty for the rest of the throttle window.
                 if (now - lastWeatherFetchMs >= 30 * 60 * 1_000L) {
-                    lastWeatherFetchMs = now
                     fetchWeather(loc.latitude, loc.longitude, settings.value.unitSystem.name == "METRIC")
                 }
                 if (now - lastPlaceFetchMs >= 5 * 60 * 1_000L) {
-                    lastPlaceFetchMs = now
                     fetchPlaceName(loc.latitude, loc.longitude)
                 }
             }

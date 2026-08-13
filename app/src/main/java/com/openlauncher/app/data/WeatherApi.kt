@@ -38,7 +38,11 @@ interface WeatherApiService {
         @Query("hourly")           hourly: String = "temperature_2m,weathercode,precipitation_probability,apparent_temperature",
         @Query("forecast_days")    forecastDays: Int = 2,
         @Query("temperature_unit") temperatureUnit: String = "celsius",
-        @Query("windspeed_unit")   windspeedUnit: String = "kmh"
+        @Query("windspeed_unit")   windspeedUnit: String = "kmh",
+        // "auto" returns hourly timestamps in the queried location's own local
+        // time (Open-Meteo defaults to GMT otherwise) — matches the device-local
+        // "now" string this gets compared against when picking current-hour-onward points.
+        @Query("timezone")        timezone: String = "auto"
     ): OpenMeteoResponse
 }
 
