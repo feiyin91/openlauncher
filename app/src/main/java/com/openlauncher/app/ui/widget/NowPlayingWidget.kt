@@ -612,61 +612,55 @@ private fun StandardMinimalPlayer(
                 }
             }
 
-            // Draw Album Art as background with smooth blur overlay if present
+            // Album art as a contained thumbnail (Spotify's own treatment), not a
+            // full-bleed cropped background — that read as oversized/distracting
+            // next to how Spotify's own player actually presents Canvas art.
             val hasAlbumArt = nonNullState.albumArt != null
-            val useDarkTheme = hasAlbumArt || !isDayMode
-
-            val currentTextColor = if (hasAlbumArt) Color.White else if (isDayMode) Color(0xFF111111) else MaterialTheme.colorScheme.onBackground
-            val currentSubTextColor = if (hasAlbumArt) Color.White.copy(alpha = 0.6f) else if (isDayMode) Color(0xFF666666) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-            val currentProgressColor = if (useDarkTheme) accent else if (isDayMode) Color(0xFF111111) else accent
+            val currentTextColor = if (isDayMode) Color(0xFF111111) else MaterialTheme.colorScheme.onBackground
+            val currentSubTextColor = if (isDayMode) Color(0xFF666666) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+            val currentProgressColor = if (isDayMode) Color(0xFF111111) else accent
             val currentProgressTrack = currentTextColor.copy(alpha = 0.15f)
             val currentIconColor = currentTextColor.copy(alpha = 0.75f)
-            val currentPlayBgColor = if (useDarkTheme) accent.copy(alpha = 0.9f) else if (isDayMode) Color(0xFF111111) else accent.copy(alpha = 0.9f)
-            val currentPlayIconColor = if (useDarkTheme) Color.Black else Color.White
-
-            if (hasAlbumArt) {
-                // Prefer the full-resolution art URI when the source app provides
-                // one — the metadata bitmap is often a downscaled notification
-                // thumbnail that looks soft stretched across the widget. Falls back
-                // to the bitmap if the URI fails to load, and renders with high
-                // filter quality so upscaling stays smooth either way.
-                coil.compose.AsyncImage(
-                    model = nonNullState.artUri ?: nonNullState.albumArt,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                    error = nonNullState.albumArt?.let {
-                        androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap())
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-                // 25% dimming layer overlay
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.25f))
-                )
-            }
+            val currentPlayBgColor = if (isDayMode) Color(0xFF111111) else accent.copy(alpha = 0.9f)
+            val currentPlayIconColor = if (isDayMode) Color.White else Color.Black
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                // Track info (top — clickable to open app)
+                // Track info — bigger thumbnail, centered as the visual focus of the
+                // tile (not corner-tucked), but still bounded rather than full-bleed.
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                     modifier = Modifier
-                        .padding(top = 16.dp)
+                        .weight(1f)
+                        .fillMaxWidth()
                         .let { if (!isEditing) it.clickable { onTapToOpenApp() } else it }
                 ) {
+                    if (hasAlbumArt) {
+                        coil.compose.AsyncImage(
+                            model = nonNullState.artUri ?: nonNullState.albumArt,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                            error = nonNullState.albumArt?.let {
+                                androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap())
+                            },
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Text(
                         text = nonNullState.title,
                         style = MaterialTheme.typography.titleMedium,
                         color = currentTextColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         fontSize = 14.sp
                     )
                     Text(
@@ -675,6 +669,7 @@ private fun StandardMinimalPlayer(
                         color = currentSubTextColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         fontSize = 11.sp
                     )
                 }

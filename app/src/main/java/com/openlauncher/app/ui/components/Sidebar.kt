@@ -57,11 +57,16 @@ fun Sidebar(
     onShortcutSetIcon: (Int, DefaultShortcutIcon?) -> Unit,
     onReorder: (from: Int, to: Int) -> Unit,
     isHorizontal: Boolean = false,
+    themeAccent: Color? = null,
+    themeBg: Color? = null,
     modifier: Modifier = Modifier
 ) {
     val isDayMode    = LocalDayMode.current
-    val accent       = Color(settings.accentColor)
-    val sidebarBg    = if (isDayMode) Color(0xFFE0E0E0) else Color.Black.copy(alpha = 0.4f)
+    // A preset dashboard theme overrides the raw accentColor/background the same
+    // way it does for HomeScreen — otherwise the sidebar stays visually stuck on
+    // whatever was last manually set, ignoring the active theme entirely.
+    val accent       = themeAccent ?: Color(settings.accentColor)
+    val sidebarBg    = themeBg ?: if (isDayMode) Color(0xFFE0E0E0) else Color.Black.copy(alpha = 0.4f)
     val iconInactive = if (isDayMode) Color(0xFF777777) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
     val dividerColor = if (isDayMode) Color(0xFFCCCCCC) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
     val density      = LocalDensity.current

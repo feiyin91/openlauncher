@@ -6,9 +6,12 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -19,14 +22,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openlauncher.app.data.AppFont
 import com.openlauncher.app.data.AppSettings
+import com.openlauncher.app.data.DASHBOARD_THEMES
 import com.openlauncher.app.data.DayNightMode
 import com.openlauncher.app.data.SidebarPosition
 import com.openlauncher.app.data.ShortcutConfig
@@ -381,6 +387,12 @@ fun SettingsScreen(
 
         // ── Appearance ───────────────────────────────────────────────────────
         SettingsSection("Appearance") {
+            // Dashboard Theme — a preset owns both accent and surface tint together;
+            // Accent Color / Background below only apply once this is set to Custom.
+            DashboardThemeRow(settings = settings, onUpdate = onUpdate)
+
+            SettingsDivider()
+
             // Display Mode
             SettingsRow(
                 label    = "Display Mode",
@@ -852,6 +864,95 @@ fun SettingsScreen(
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun DashboardThemeRow(
+    settings: AppSettings,
+    onUpdate: (AppSettings.() -> AppSettings) -> Unit
+) {
+    val isDayMode  = LocalDayMode.current
+    val labelColor = if (isDayMode) Color(0xFF111111) else Color(0xFFDDDDDD)
+    val subColor   = if (isDayMode) Color(0xFF888888) else Color(0xFF444444)
+    val iconTint   = if (isDayMode) Color(0xFF777777) else MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+    val isCustom   = DASHBOARD_THEMES.none { it.id == settings.themeId }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 11.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Palette, null, tint = iconTint, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text("Dashboard Theme", style = MaterialTheme.typography.bodyMedium, color = labelColor, fontSize = 13.sp)
+                Text(
+                    text     = DASHBOARD_THEMES.find { it.id == settings.themeId }?.label ?: "Custom",
+                    style    = MaterialTheme.typography.labelSmall,
+                    color    = subColor,
+                    fontSize = 11.sp
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            DASHBOARD_THEMES.forEach { theme ->
+                ThemeSwatchButton(
+                    label         = theme.label,
+                    gradientStart = Color(theme.darkAccent),
+                    gradientEnd   = Color(theme.darkBg),
+                    selected      = settings.themeId == theme.id,
+                    onClick       = { onUpdate { copy(themeId = theme.id) } }
+                )
+            }
+            ThemeSwatchButton(
+                label         = "Custom",
+                gradientStart = Color(settings.accentColor),
+                gradientEnd   = Color(settings.backgroundColor),
+                selected      = isCustom,
+                onClick       = { onUpdate { copy(themeId = "custom") } }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeSwatchButton(
+    label: String,
+    gradientStart: Color,
+    gradientEnd: Color,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val isDayMode  = LocalDayMode.current
+    val labelColor = if (selected) gradientStart else if (isDayMode) Color(0xFF888888) else Color(0xFF666666)
+    Column(
+        horizontalAlignment  = Alignment.CenterHorizontally,
+        verticalArrangement  = Arrangement.spacedBy(4.dp),
+        modifier             = Modifier.width(54.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(gradientStart, gradientEnd)))
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) gradientStart else Color(0x33808080),
+                    shape = CircleShape
+                )
+                .clickable(onClick = onClick)
+        )
+        Text(
+            text          = label,
+            color         = labelColor,
+            fontSize      = 7.sp,
+            letterSpacing = 0.3.sp,
+            textAlign     = TextAlign.Center,
+            maxLines      = 2,
+            lineHeight    = 8.sp
+        )
+    }
+}
 
 @Composable
 private fun SettingsSection(

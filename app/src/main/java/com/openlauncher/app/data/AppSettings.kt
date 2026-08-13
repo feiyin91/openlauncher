@@ -41,6 +41,14 @@ fun defaultSoundboardPads() = listOf(
     SoundPadConfig("+",            synthType = "")
 )
 
+data class FuelEntry(
+    val timestampMs: Long,
+    val odometerKm: Double,   // always stored in km; converted for display per unitSystem
+    val volume: Double,       // liters (metric entries) or gallons (imperial entries)
+    val cost: Double,
+    val isMetric: Boolean     // unit system in effect when this entry was logged
+)
+
 data class ShortcutConfig(
     val packageName: String = "",
     val label: String = "",
@@ -103,7 +111,14 @@ data class AppSettings(
     val vitalsAsBars: Boolean = false,
     val speedometerDigitalOnly: Boolean = false,
     val gradientDirection: GradientDirection = GradientDirection.DIAGONAL,
-    val useCustomBackgroundColor: Boolean = false
+    val useCustomBackgroundColor: Boolean = false,
+    val showFuelLog: Boolean = false,
+    val fuelLog: List<FuelEntry> = emptyList(),
+    val showQuickToggles: Boolean = false,
+    val showLocation: Boolean = false,
+    // "custom" = fall back to the manually-picked accentColor/backgroundColor below;
+    // any DASHBOARD_THEMES id = use that preset's accent+surface for the current mode.
+    val themeId: String = "ignition"
 )
 
 fun defaultShortcuts() = listOf(
@@ -120,6 +135,24 @@ fun defaultWidgetLayout() = listOf(
     WidgetConfig("NOW_PLAYING", gridX = 0, gridY = 1, spanX = 2, spanY = 1)
 )
 
+/**
+ * Media-dominant "split panel" layout: a big Now Playing card fills the left
+ * two-thirds (album art, transport controls), Weather and Clock stack as
+ * glanceable info on the right — same cockpit feel as the closed-source
+ * Mini AA launcher, built from widgets OpenLauncher already has natively.
+ */
+fun splitPanelWidgetLayout() = listOf(
+    WidgetConfig("NOW_PLAYING", gridX = 0, gridY = 0, spanX = 2, spanY = 2),
+    WidgetConfig("WEATHER",     gridX = 2, gridY = 0, spanX = 1, spanY = 1),
+    WidgetConfig("CLOCK",       gridX = 2, gridY = 1, spanX = 1, spanY = 1)
+)
+
+/** Widget ids toggled by [AppSettings.showX] flags — used to sync those flags to a preset. */
+val PRESET_TOGGLEABLE_IDS = setOf(
+    "CLOCK", "WEATHER", "NOW_PLAYING", "TELEMETRY", "ALTIMETER",
+    "SPEEDOMETER", "VITALS", "TRIP_TRACKER", "SOUNDBOARD"
+)
+
 fun AppSettings.activeWidgetIds(): Set<String> = buildSet {
     if (showClock) add("CLOCK")
     if (showWeather) add("WEATHER")
@@ -130,6 +163,9 @@ fun AppSettings.activeWidgetIds(): Set<String> = buildSet {
     if (showVitals) add("VITALS")
     if (showTripTracker) add("TRIP_TRACKER")
     if (showSoundboard) add("SOUNDBOARD")
+    if (showFuelLog) add("FUEL_LOG")
+    if (showQuickToggles) add("QUICK_TOGGLES")
+    if (showLocation) add("LOCATION")
 }
 
 /**

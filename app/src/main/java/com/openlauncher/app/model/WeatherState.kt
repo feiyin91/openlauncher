@@ -1,10 +1,23 @@
 package com.openlauncher.app.model
 
+data class HourlyPoint(
+    val hour: Int,           // 0-23, local time
+    val temperatureCelsius: Double,
+    val weatherCode: Int,
+    val isDay: Boolean
+) {
+    fun temperatureDisplay(metric: Boolean): String =
+        if (metric) "${Math.round(temperatureCelsius)}°" else "${Math.round(celsiusToFahrenheit(temperatureCelsius))}°"
+
+    val conditionIcon: String get() = wmoCodeToEmoji(weatherCode, isDay)
+}
+
 data class WeatherState(
     val temperatureCelsius: Double,
     val weatherCode: Int,
     val windspeedKmh: Double,
-    val isDay: Boolean
+    val isDay: Boolean,
+    val hourlyForecast: List<HourlyPoint> = emptyList()
 ) {
     // roundToInt, not toInt — truncation displayed 20.9° as 20°
     fun temperatureDisplay(metric: Boolean): String =

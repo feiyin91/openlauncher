@@ -1,11 +1,14 @@
 package com.openlauncher.app.viewmodel
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -219,6 +222,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 "VITALS"      -> copy(showVitals = true)
                 "TRIP_TRACKER" -> copy(showTripTracker = true)
                 "SOUNDBOARD"  -> copy(showSoundboard = true)
+                "FUEL_LOG"    -> copy(showFuelLog = true)
+                "QUICK_TOGGLES" -> copy(showQuickToggles = true)
+                "LOCATION"    -> copy(showLocation = true)
                 else          -> this
             }
             val idx       = layout.indexOfFirst { it.id == id }
@@ -250,8 +256,54 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 "VITALS"      -> copy(showVitals = false)
                 "TRIP_TRACKER" -> copy(showTripTracker = false)
                 "SOUNDBOARD"  -> copy(showSoundboard = false)
+                "FUEL_LOG"    -> copy(showFuelLog = false)
+                "QUICK_TOGGLES" -> copy(showQuickToggles = false)
+                "LOCATION"    -> copy(showLocation = false)
                 else          -> this
             }
+        }
+    }
+
+    fun addFuelEntry(odometerKm: Double, volume: Double, cost: Double) {
+        updateSettings {
+            val entry = com.openlauncher.app.data.FuelEntry(
+                timestampMs = System.currentTimeMillis(),
+                odometerKm  = odometerKm,
+                volume      = volume,
+                cost        = cost,
+                isMetric    = unitSystem == com.openlauncher.app.data.UnitSystem.METRIC
+            )
+            copy(fuelLog = (fuelLog + entry).sortedBy { it.timestampMs })
+        }
+    }
+
+    fun deleteFuelEntry(timestampMs: Long) {
+        updateSettings { copy(fuelLog = fuelLog.filterNot { it.timestampMs == timestampMs }) }
+    }
+
+    /**
+     * Replaces the widget grid wholesale with a named preset (e.g. [splitPanelWidgetLayout])
+     * and syncs each toggleable widget's show-flag to whether it's present in the preset,
+     * so the grid renders exactly the preset with no stray widgets left enabled from before.
+     */
+    fun applyLayoutPreset(preset: List<com.openlauncher.app.data.WidgetConfig>) {
+        updateSettings {
+            val presentIds = preset.map { it.id }.toSet()
+            val withShow = copy(
+                showClock        = "CLOCK" in presentIds,
+                showWeather      = "WEATHER" in presentIds,
+                showNowPlaying   = "NOW_PLAYING" in presentIds,
+                showTelemetry    = "TELEMETRY" in presentIds,
+                showAltimeter    = "ALTIMETER" in presentIds,
+                showSpeedometer  = "SPEEDOMETER" in presentIds,
+                showVitals       = "VITALS" in presentIds,
+                showTripTracker  = "TRIP_TRACKER" in presentIds,
+                showSoundboard   = "SOUNDBOARD" in presentIds
+            )
+            // Keep any widget configs not part of this preset around (disabled) so their
+            // spans/positions aren't lost if the user switches presets again later.
+            val untouched = widgetLayout.filter { it.id !in presentIds }
+            withShow.copy(widgetLayout = preset + untouched)
         }
     }
 
@@ -384,16 +436,64 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 // the value through two lossy conversions
                 val resp = WeatherApi.service.getForecast(lat, lon, temperatureUnit = "celsius")
                 resp.currentWeather?.let { cw ->
+                    // Open-Meteo's hourly block is parallel arrays keyed by ISO timestamp
+                    // ("2026-08-12T23:00") — keep only points from the current hour onward
+                    // so the strip reads as "coming up," not partly-past.
+                    val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
+                        .format(java.util.Date())
+                    val hourly = resp.hourly
+                    val forecast = if (hourly != null) {
+                        hourly.time.indices
+                            .filter { hourly.time[it] >= nowIso }
+                            .take(6)
+                            .mapNotNull { i ->
+                                val hourStr = hourly.time.getOrNull(i)?.takeLast(5)?.take(2) ?: return@mapNotNull null
+                                val hour = hourStr.toIntOrNull() ?: return@mapNotNull null
+                                com.openlauncher.app.model.HourlyPoint(
+                                    hour               = hour,
+                                    temperatureCelsius = hourly.temperature2m.getOrNull(i) ?: return@mapNotNull null,
+                                    weatherCode        = hourly.weathercode.getOrNull(i) ?: 0,
+                                    isDay              = hour in 6..17
+                                )
+                            }
+                    } else emptyList()
+
                     _weather.value = WeatherState(
                         temperatureCelsius = cw.temperature,
                         weatherCode       = cw.weathercode,
                         windspeedKmh      = cw.windspeed,
-                        isDay             = cw.isDay == 1
+                        isDay             = cw.isDay == 1,
+                        hourlyForecast    = forecast
                     )
                 }
                 _weatherError.value = null
             } catch (e: Exception) {
                 _weatherError.value = e.message
+            }
+        }
+    }
+
+    // ── Reverse geocoding (coordinates → place name) ───────────────────────────
+    private val _placeName = MutableStateFlow<String?>(null)
+    val placeName: StateFlow<String?> = _placeName
+
+    fun fetchPlaceName(lat: Double, lon: Double) {
+        viewModelScope.launch {
+            try {
+                val resp = com.openlauncher.app.data.NominatimApi.service.reverseGeocode(lat, lon)
+                val addr = resp.address
+                val locality = addr?.suburb ?: addr?.city ?: addr?.town ?: addr?.village ?: addr?.county
+                val state = addr?.state
+                // Keep the previous value on a genuinely empty response rather than
+                // blanking a widget that already had something useful to show.
+                val resolved = when {
+                    locality != null && state != null && state != locality -> "$locality, $state"
+                    locality != null -> locality
+                    else -> resp.displayName?.split(",")?.map { it.trim() }?.take(2)?.joinToString(", ")
+                }
+                if (resolved != null) _placeName.value = resolved
+            } catch (_: Exception) {
+                // transient network hiccup — leave the last known place name showing
             }
         }
     }
@@ -643,29 +743,63 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // ── Voltage ───────────────────────────────────────────────────────────────
+    // Most aftermarket head units have no real internal battery — the vendor ROM
+    // wires the car's 12V input straight into Android's standard battery-voltage
+    // reporting (the same field a phone would use for its own cell), so this reads
+    // through the public BatteryManager API rather than anything unit-specific.
+    private val _voltage = MutableStateFlow<Float?>(null)
+    val voltage: StateFlow<Float?> = _voltage
+
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val millivolts = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1)
+            // A real car electrical system is never anywhere near 0V while the unit
+            // is on — this unit's standard-Android battery field turned out to be a
+            // meaningless placeholder, not the real CAN-bus-fed voltage sensor its
+            // own status bar reads from. Better to show nothing than a false 0.0V.
+            if (millivolts >= 5000) _voltage.value = millivolts / 1000f
+        }
+    }
+
+    private fun startVoltageObserver() {
+        runCatching {
+            getApplication<Application>().registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         locationMgr.stop()
         radioObserver?.let { getApplication<Application>().contentResolver.unregisterContentObserver(it) }
         radioObserver = null
+        runCatching { getApplication<Application>().unregisterReceiver(batteryReceiver) }
     }
 
     init {
         loadInstalledApps()
         refreshConnectivity()
+        startVoltageObserver()
         if (hasSzchoicewayMcu) startHardwareRadioObserver()
-        // Fetch weather on first location fix, then every 30 minutes.
+        // Weather refreshes every 30 minutes (conditions don't change fast enough
+        // to justify more). Place name refreshes every 5 minutes — a moving car
+        // can cross several neighborhoods in that span, 30 minutes reads stale.
         // The minute ticker covers the parked case where no location updates arrive.
         viewModelScope.launch {
-            var lastFetchMs = 0L
+            var lastWeatherFetchMs = 0L
+            var lastPlaceFetchMs = 0L
             merge(
                 locationMgr.location.filterNotNull(),
                 minuteTicker.mapNotNull { locationMgr.location.value }
             ).collect { loc ->
                 val now = System.currentTimeMillis()
-                if (now - lastFetchMs >= 30 * 60 * 1_000L) {
-                    lastFetchMs = now
+                if (now - lastWeatherFetchMs >= 30 * 60 * 1_000L) {
+                    lastWeatherFetchMs = now
                     fetchWeather(loc.latitude, loc.longitude, settings.value.unitSystem.name == "METRIC")
+                }
+                if (now - lastPlaceFetchMs >= 5 * 60 * 1_000L) {
+                    lastPlaceFetchMs = now
+                    fetchPlaceName(loc.latitude, loc.longitude)
                 }
             }
         }

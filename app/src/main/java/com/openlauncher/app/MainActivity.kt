@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
             val appsLoading by vm.appsLoading.collectAsStateWithLifecycle()
             val nowPlaying  by vm.nowPlaying.collectAsStateWithLifecycle()
             val weather     by vm.weather.collectAsStateWithLifecycle()
+            val placeName   by vm.placeName.collectAsStateWithLifecycle()
+            val voltage     by vm.voltage.collectAsStateWithLifecycle()
             val location    by vm.location.collectAsStateWithLifecycle()
             val bearing     by vm.compassBearing.collectAsStateWithLifecycle()
             val isWifi      by vm.isWifi.collectAsStateWithLifecycle()
@@ -78,13 +80,17 @@ class MainActivity : ComponentActivity() {
             val pickerSlot      by vm.shortcutPickerSlot.collectAsStateWithLifecycle()
             val appPickerTarget by vm.appPickerTarget.collectAsStateWithLifecycle()
 
-            val accent         = Color(settings.accentColor)
-            val bg             = if (settings.useCustomBackgroundColor) {
+            // A preset themeId overrides the manually-picked accent/background/font
+            // colors below; "custom" (or an unrecognized id) falls through to those.
+            val resolvedTheme  = com.openlauncher.app.data.resolveDashboardTheme(settings.themeId, isDayMode)
+            val accent         = resolvedTheme?.accent ?: Color(settings.accentColor)
+            val bg             = resolvedTheme?.background ?: if (settings.useCustomBackgroundColor) {
                 Color(settings.backgroundColor)
             } else {
                 if (isDayMode) Color(0xFFEEEEEE) else Color.Black
             }
-            val textColor      = if (isDayMode) Color(0xFF111111) else Color(settings.fontColor)
+            val textColor      = resolvedTheme?.ink
+                ?: if (isDayMode) Color(0xFF111111) else Color(settings.fontColor)
             val bgGradientEnd  = Color(settings.gradientEndColor)
             val bgBrush        = if (settings.useCustomBackgroundColor && settings.useGradient) {
                 val colors = listOf(bg, bgGradientEnd)
@@ -113,7 +119,7 @@ class MainActivity : ComponentActivity() {
                     textScale  = settings.textScale,
                     appFont    = settings.appFont,
                     isDayMode  = isDayMode,
-                    useCustomBg = settings.useCustomBackgroundColor
+                    useCustomBg = resolvedTheme != null || settings.useCustomBackgroundColor
                 ) {
                 if (!settings.onboardingCompleted) {
                     OnboardingScreen(
@@ -153,6 +159,8 @@ class MainActivity : ComponentActivity() {
                                     currentDest   = nav,
                                     settings      = settings,
                                     isHorizontal  = isBottomBar,
+                                    themeAccent   = accent,
+                                    themeBg       = resolvedTheme?.background,
                                     installedIconFor = { pkg ->
                                         apps.find { it.packageName == pkg }?.icon
                                     },
@@ -193,6 +201,8 @@ class MainActivity : ComponentActivity() {
                                         weather             = weather,
                                         nowPlaying          = nowPlaying,
                                         location            = location,
+                                        placeName           = placeName,
+                                        voltage             = voltage,
                                         bearing             = bearing,
                                         isWifi              = isWifi,
                                         isData              = isData,
@@ -217,6 +227,8 @@ class MainActivity : ComponentActivity() {
                                         onMoveWidget        = { id, gx, gy -> vm.moveWidgetConfig(id, gx, gy) },
                                         onAddWidget         = { id -> vm.addWidget(id) },
                                         onRemoveWidget      = { id -> vm.removeWidget(id) },
+                                        onApplyPreset       = { preset -> vm.applyLayoutPreset(preset) },
+                                        onAddFuelEntry      = { odo, vol, cost -> vm.addFuelEntry(odo, vol, cost) },
                                         onSetClockStyle     = { style -> vm.updateSettings { copy(clockStyle = style) } },
                                         onSetVitalsAsBars   = { asBars -> vm.updateSettings { copy(vitalsAsBars = asBars) } },
                                         onSetSpeedometerDigitalOnly = { digital -> vm.updateSettings { copy(speedometerDigitalOnly = digital) } },

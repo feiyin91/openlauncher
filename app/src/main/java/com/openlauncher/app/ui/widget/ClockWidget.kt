@@ -2,6 +2,10 @@ package com.openlauncher.app.ui.widget
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -10,6 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openlauncher.app.data.ClockStyle
@@ -41,34 +46,57 @@ fun ClockWidget(
 
     Box(modifier = modifier) {
         when (style) {
-            ClockStyle.DIGITAL -> DigitalClock(calendar, contentColor, subColor)
+            ClockStyle.DIGITAL -> DigitalClock(calendar, contentColor, subColor, accent)
             ClockStyle.ANALOG  -> AnalogClock(calendar, accent, isDayMode)
         }
     }
 }
 
 @Composable
-private fun DigitalClock(cal: Calendar, contentColor: Color, subColor: Color) {
+private fun DigitalClock(cal: Calendar, contentColor: Color, subColor: Color, accent: Color) {
     val hour   = cal.get(Calendar.HOUR_OF_DAY)
     val minute = cal.get(Calendar.MINUTE)
+    val isDaylightHour = hour in 6..17
 
     Column(
-        modifier            = Modifier.fillMaxSize().padding(start = 14.dp, bottom = 14.dp),
-        verticalArrangement = Arrangement.Bottom,
-        horizontalAlignment = Alignment.Start
+        modifier            = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text          = "%02d:%02d".format(hour, minute),
-            color         = contentColor,
-            fontSize      = 48.sp,
-            fontWeight    = androidx.compose.ui.text.font.FontWeight.Light,
-            letterSpacing = 1.sp
-        )
-        Text(
-            text     = buildDateString(cal),
-            color    = subColor,
-            fontSize = 12.sp
-        )
+        // Top row fills the space the plain bottom-anchored layout used to leave empty
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            Text(
+                text          = clockTimeLabel(cal),
+                color         = subColor,
+                fontSize      = 9.sp,
+                fontWeight    = FontWeight.Bold,
+                letterSpacing = 2.sp
+            )
+            Icon(
+                imageVector        = if (isDaylightHour) Icons.Default.WbSunny else Icons.Default.NightsStay,
+                contentDescription = null,
+                tint               = accent.copy(alpha = 0.45f),
+                modifier           = Modifier.size(14.dp)
+            )
+        }
+
+        Column(horizontalAlignment = Alignment.Start) {
+            Text(
+                text          = "%02d:%02d".format(hour, minute),
+                color         = contentColor,
+                fontSize      = 44.sp,
+                fontWeight    = FontWeight.Light,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text     = buildDateString(cal),
+                color    = subColor,
+                fontSize = 12.sp
+            )
+        }
     }
 }
 

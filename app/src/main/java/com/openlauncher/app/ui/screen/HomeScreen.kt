@@ -64,7 +64,10 @@ private val ALL_WIDGET_TYPES = listOf(
     WidgetTypeInfo("SPEEDOMETER", "SPEED",       Icons.Default.Speed,         "GPS speed"),
     WidgetTypeInfo("VITALS",      "VITALS",      Icons.Default.Dns,           "Head Unit Health / Vitals"),
     WidgetTypeInfo("TRIP_TRACKER", "TRIP TRACKER", Icons.Default.Map,          "Trip logs & stats"),
-    WidgetTypeInfo("SOUNDBOARD",  "SOUNDBOARD",  Icons.Default.Piano,         "Custom sound pads")
+    WidgetTypeInfo("SOUNDBOARD",  "SOUNDBOARD",  Icons.Default.Piano,         "Custom sound pads"),
+    WidgetTypeInfo("FUEL_LOG",    "FUEL LOG",    Icons.Default.LocalGasStation, "Fill-ups & efficiency"),
+    WidgetTypeInfo("QUICK_TOGGLES", "TOGGLES",   Icons.Default.ToggleOn,      "WiFi, Bluetooth & DND"),
+    WidgetTypeInfo("LOCATION",    "LOCATION",    Icons.Default.GpsFixed,      "Live GPS coordinates")
 )
 
 private fun canAddWidget(settings: com.openlauncher.app.data.AppSettings): Boolean {
@@ -78,6 +81,9 @@ private fun canAddWidget(settings: com.openlauncher.app.data.AppSettings): Boole
         if (settings.showVitals) add("VITALS")
         if (settings.showTripTracker) add("TRIP_TRACKER")
         if (settings.showSoundboard) add("SOUNDBOARD")
+        if (settings.showFuelLog) add("FUEL_LOG")
+        if (settings.showQuickToggles) add("QUICK_TOGGLES")
+        if (settings.showLocation) add("LOCATION")
     }
     val activeWidgets = settings.widgetLayout.filter { it.enabled && it.id in visibleIds }
     val occupied = buildSet<Pair<Int, Int>> {
@@ -99,9 +105,11 @@ fun HomeScreen(
     weather: WeatherState?,
     nowPlaying: NowPlayingState?,
     location: LocationData?,
+    placeName: String? = null,
     bearing: Float,
     isWifi: Boolean,
     isData: Boolean,
+    voltage: Float? = null,
     isDayMode: Boolean = false,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -120,6 +128,8 @@ fun HomeScreen(
     onMoveWidget: (id: String, gridX: Int, gridY: Int) -> Unit,
     onAddWidget: (id: String) -> Unit,
     onRemoveWidget: (id: String) -> Unit,
+    onApplyPreset: (List<WidgetConfig>) -> Unit = {},
+    onAddFuelEntry: (odometerKm: Double, volume: Double, cost: Double) -> Unit = { _, _, _ -> },
     onSetClockStyle: (ClockStyle) -> Unit,
     onSetVitalsAsBars: (Boolean) -> Unit = {},
     onSetSpeedometerDigitalOnly: (Boolean) -> Unit = {},
@@ -135,15 +145,21 @@ fun HomeScreen(
     onAssignRadio: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val accent       = Color(settings.accentColor)
+    // A preset themeId supplies its own accent + tile surface for the current mode;
+    // "custom" (or an unrecognized id) falls through to the manually-picked accent
+    // and the original wallpaper/day-mode tile logic below, unchanged.
+    val resolvedTheme = com.openlauncher.app.data.resolveDashboardTheme(settings.themeId, isDayMode)
+    val accent       = resolvedTheme?.accent ?: Color(settings.accentColor)
     val gap          = 6.dp
     val hasWallpaper = settings.wallpaperUri.isNotEmpty()
     val widgetBg     = when {
+        resolvedTheme != null && !hasWallpaper -> resolvedTheme.background
         isDayMode    -> Color(0xFFFFFFFF)
         hasWallpaper -> Color(0xCC000000)
         else         -> Color.Black.copy(alpha = 0.35f)
     }
     val widgetBorder = when {
+        resolvedTheme != null && !hasWallpaper -> accent.copy(alpha = if (isDayMode) 0.35f else 0.25f)
         isDayMode    -> Color(0xFFCCCCCC)
         hasWallpaper -> Color(0x22FFFFFF)
         else         -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
@@ -159,6 +175,7 @@ fun HomeScreen(
     val isLandscape      = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var editMode         by remember { mutableStateOf(false) }
     var widgetLibraryOpen by remember { mutableStateOf(false) }
+    var presetPickerOpen by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
 
@@ -178,6 +195,19 @@ fun HomeScreen(
                 fontSize      = 14.sp
             )
             Spacer(Modifier.weight(1f))
+            if (voltage != null) {
+                val voltageColor = if (voltage < 12f) Color(0xFFE05252) else statusIconColor
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Icon(Icons.Default.Bolt, "Voltage", tint = voltageColor, modifier = Modifier.size(14.dp))
+                    Text(
+                        text = "%.1fV".format(voltage),
+                        color = voltageColor,
+                        fontSize = 11.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             AnimatedVisibility(visible = isWifi, enter = fadeIn(), exit = fadeOut()) {
                 Icon(Icons.Default.Wifi, "WiFi", tint = statusIconColor, modifier = Modifier.size(16.dp))
             }
@@ -195,6 +225,18 @@ fun HomeScreen(
                         Icon(
                             imageVector        = Icons.Default.Dashboard,
                             contentDescription = "Widget library",
+                            tint               = controlIconColor,
+                            modifier           = Modifier.size(15.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(2.dp))
+                    IconButton(
+                        onClick  = { presetPickerOpen = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector        = Icons.Default.ViewQuilt,
+                            contentDescription = "Layout presets",
                             tint               = controlIconColor,
                             modifier           = Modifier.size(15.dp)
                         )
@@ -243,6 +285,9 @@ fun HomeScreen(
                 if (settings.showVitals) add("VITALS")
                 if (settings.showTripTracker) add("TRIP_TRACKER")
                 if (settings.showSoundboard) add("SOUNDBOARD")
+                if (settings.showFuelLog) add("FUEL_LOG")
+                if (settings.showQuickToggles) add("QUICK_TOGGLES")
+                if (settings.showLocation) add("LOCATION")
             }
 
             // Keep only visible widgets exactly as configured in settings, allowing explicit resizing to dictate layout
@@ -310,7 +355,9 @@ fun HomeScreen(
                 val height = cellH * w.spanY + gap * (w.spanY - 1)
 
                 val label = when (w.id) {
-                    "CLOCK"       -> clockTimeLabel(Calendar.getInstance())
+                    // CLOCK renders its own greeting/icon row internally now — the generic
+                    // corner label would just duplicate it (this was the "two MORNING" bug).
+                    "CLOCK"       -> ""
                     "WEATHER"     -> "WEATHER"
                     "NOW_PLAYING" -> "NOW PLAYING"
                     "TELEMETRY"   -> "COMPASS"
@@ -318,6 +365,11 @@ fun HomeScreen(
                     "SPEEDOMETER" -> "SPEED"
                     "TRIP_TRACKER" -> "TRIP"
                     "SOUNDBOARD"  -> "SOUND"
+                    "FUEL_LOG"    -> "FUEL"
+                    "QUICK_TOGGLES" -> "TOGGLES"
+                    // LOCATION renders its own "LIVE LOCATION" header internally —
+                    // same duplicate-label issue the Clock widget had.
+                    "LOCATION"    -> ""
                     else          -> w.id
                 }
 
@@ -405,6 +457,8 @@ fun HomeScreen(
                             accent     = accent,
                             metric     = settings.unitSystem.name == "METRIC",
                             isDayMode  = isDayMode,
+                            location   = location,
+                            placeName  = placeName,
                             modifier   = Modifier.fillMaxSize()
                         )
                         "NOW_PLAYING" -> NowPlayingWidget(
@@ -474,12 +528,34 @@ fun HomeScreen(
                             onUpdatePad = onUpdateSoundPad,
                             modifier  = Modifier.fillMaxSize()
                         )
+                        "FUEL_LOG" -> FuelLogWidget(
+                            entries   = settings.fuelLog,
+                            isMetric  = settings.unitSystem == com.openlauncher.app.data.UnitSystem.METRIC,
+                            accent    = accent,
+                            isDayMode = isDayMode,
+                            isEditing = editMode,
+                            onAddEntry = onAddFuelEntry,
+                            modifier  = Modifier.fillMaxSize()
+                        )
+                        "QUICK_TOGGLES" -> QuickTogglesWidget(
+                            accent    = accent,
+                            isDayMode = isDayMode,
+                            isEditing = editMode,
+                            modifier  = Modifier.fillMaxSize()
+                        )
+                        "LOCATION" -> LocationWidget(
+                            location  = location,
+                            placeName = placeName,
+                            accent    = accent,
+                            isDayMode = isDayMode,
+                            modifier  = Modifier.fillMaxSize()
+                        )
                     }
 
-                    // Label — hide when album art fills the widget background
+                    // Label — Now Playing's art is a small thumbnail now, not a full-bleed
+                    // background, so the corner label no longer needs to hide behind it.
                     val labelColor = when {
                         isGhost -> Color.Transparent
-                        w.id == "NOW_PLAYING" && nowPlaying?.albumArt != null && nowPlaying.title.isNotEmpty() -> Color.Transparent
                         isDayMode -> Color(0xFF999999)
                         else      -> Color(0xFF3A3A3A)
                     }
@@ -551,6 +627,115 @@ fun HomeScreen(
             onRemove  = { id -> onRemoveWidget(id) },
             onDismiss = { widgetLibraryOpen = false }
         )
+    }
+
+    // ── Layout presets ───────────────────────────────────────────────────────
+    if (presetPickerOpen) {
+        LayoutPresetDialog(
+            accent    = accent,
+            isDayMode = isDayMode,
+            onApply   = { preset -> onApplyPreset(preset); presetPickerOpen = false },
+            onDismiss = { presetPickerOpen = false }
+        )
+    }
+}
+
+private data class LayoutPresetInfo(
+    val label: String,
+    val description: String,
+    val icon: ImageVector,
+    val layout: List<WidgetConfig>
+)
+
+private val LAYOUT_PRESETS = listOf(
+    LayoutPresetInfo(
+        label       = "DEFAULT",
+        description = "Clock, weather, compass & now playing — balanced grid",
+        icon        = Icons.Default.GridView,
+        layout      = com.openlauncher.app.data.defaultWidgetLayout()
+    ),
+    LayoutPresetInfo(
+        label       = "SPLIT PANEL",
+        description = "Big media card on the left, weather & clock stacked on the right",
+        icon        = Icons.Default.ViewQuilt,
+        layout      = com.openlauncher.app.data.splitPanelWidgetLayout()
+    )
+)
+
+@Composable
+private fun LayoutPresetDialog(
+    accent: Color,
+    isDayMode: Boolean,
+    onApply: (List<WidgetConfig>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dialogBg    = if (isDayMode) Color(0xFFEEEEEE) else Color(0xFF0C0C0C)
+    val dialogBorder = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF1E1E1E)
+    val titleColor  = if (isDayMode) Color(0xFF495057) else Color(0xFF555555)
+    val closeColor  = if (isDayMode) Color(0xFF495057) else Color(0xFF444444)
+    val labelColor  = if (isDayMode) Color(0xFF212529) else Color(0xFFDDDDDD)
+    val descColor   = if (isDayMode) Color(0xFF6C757D) else Color(0xFF888888)
+    val cardBg      = if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF0E0E0E)
+    val cardBorder  = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF1A1A1A)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(dialogBg)
+                .border(1.dp, dialogBorder, RoundedCornerShape(4.dp))
+                .padding(16.dp)
+                .widthIn(min = 280.dp, max = 420.dp)
+        ) {
+            Row(
+                modifier          = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text          = "LAYOUT PRESETS",
+                    color         = titleColor,
+                    fontSize      = 9.sp,
+                    letterSpacing = 2.sp
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Close, null, tint = closeColor, modifier = Modifier.size(14.dp))
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LAYOUT_PRESETS.forEach { preset ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(cardBg)
+                            .border(1.dp, cardBorder, RoundedCornerShape(4.dp))
+                            .clickable { onApply(preset.layout) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(preset.icon, null, tint = accent, modifier = Modifier.size(20.dp))
+                        Column {
+                            Text(
+                                text          = preset.label,
+                                color         = labelColor,
+                                fontSize      = 11.sp,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text     = preset.description,
+                                color    = descColor,
+                                fontSize = 9.sp,
+                                lineHeight = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -839,6 +1024,9 @@ private fun WidgetLibraryDialog(
         if (settings.showVitals) add("VITALS")
         if (settings.showTripTracker) add("TRIP_TRACKER")
         if (settings.showSoundboard) add("SOUNDBOARD")
+        if (settings.showFuelLog) add("FUEL_LOG")
+        if (settings.showQuickToggles) add("QUICK_TOGGLES")
+        if (settings.showLocation) add("LOCATION")
     }
     val canAdd = canAddWidget(settings)
 
