@@ -52,12 +52,17 @@ private data class WidgetTypeInfo(
     val id: String,
     val label: String,
     val icon: ImageVector,
-    val description: String
+    val description: String,
+    // Needs a live internet connection (WiFi/hotspot or the unit's own cellular
+    // data) to actually populate — Weather (Open-Meteo) and Location's place
+    // name (Nominatim reverse geocoding) both go blank offline, unlike every
+    // other widget here which works from local sensors/data alone.
+    val requiresNetwork: Boolean = false
 )
 
 private val ALL_WIDGET_TYPES = listOf(
     WidgetTypeInfo("CLOCK",       "CLOCK",       Icons.Default.AccessTime,  "Time & date"),
-    WidgetTypeInfo("WEATHER",     "WEATHER",     Icons.Default.Cloud,       "Current conditions"),
+    WidgetTypeInfo("WEATHER",     "WEATHER",     Icons.Default.Cloud,       "Current conditions", requiresNetwork = true),
     WidgetTypeInfo("NOW_PLAYING", "NOW PLAYING", Icons.Default.MusicNote,   "Media controls"),
     WidgetTypeInfo("TELEMETRY",   "COMPASS",     Icons.Default.Explore,     "Speed & heading"),
     WidgetTypeInfo("ALTIMETER",   "ALTIMETER",   Icons.Default.FlightTakeoff, "Roll, pitch & altitude"),
@@ -67,7 +72,7 @@ private val ALL_WIDGET_TYPES = listOf(
     WidgetTypeInfo("SOUNDBOARD",  "SOUNDBOARD",  Icons.Default.Piano,         "Custom sound pads"),
     WidgetTypeInfo("FUEL_LOG",    "FUEL LOG",    Icons.Default.LocalGasStation, "Fill-ups & efficiency"),
     WidgetTypeInfo("QUICK_TOGGLES", "TOGGLES",   Icons.Default.ToggleOn,      "WiFi, Bluetooth & DND"),
-    WidgetTypeInfo("LOCATION",    "LOCATION",    Icons.Default.GpsFixed,      "Live GPS coordinates")
+    WidgetTypeInfo("LOCATION",    "LOCATION",    Icons.Default.GpsFixed,      "Live GPS coordinates", requiresNetwork = true)
 )
 
 private fun canAddWidget(settings: com.openlauncher.app.data.AppSettings): Boolean {
@@ -1209,8 +1214,11 @@ private fun WidgetLibraryCard(
     val cardBg     = if (isActive) accent.copy(alpha = 0.15f) else if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF0E0E0E)
     val iconTint   = if (isActive) accent else if (isDayMode) Color(0xFF495057) else Color(0xFF333333)
     val labelColor = if (isActive) accent else if (isDayMode) Color(0xFF212529) else Color(0xFF3A3A3A)
+    // Amber/yellow reads clearly against edit mode's grey card shading without
+    // being confused for the active-state accent color or an error state.
+    val networkTagColor = Color(0xFFE8A93D)
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
@@ -1218,36 +1226,62 @@ private fun WidgetLibraryCard(
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(4.dp))
             .clickable(enabled = enabled, onClick = onToggle)
-            .padding(6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
-        Icon(info.icon, null, tint = iconTint, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(5.dp))
-        Text(
-            text          = info.label,
-            color         = labelColor,
-            fontSize      = 7.sp,
-            letterSpacing = 1.sp,
-            textAlign     = TextAlign.Center,
-            maxLines      = 2,
-            lineHeight    = 9.sp
-        )
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text          = when {
-                isActive -> "ACTIVE"
-                !canAdd  -> "FULL"
-                else     -> "ADD"
-            },
-            color         = when {
-                isActive -> accent.copy(alpha = 0.75f)
-                !canAdd  -> if (isDayMode) Color(0xFFADB5BD) else Color(0xFF282828)
-                else     -> if (isDayMode) Color(0xFF495057) else Color(0xFF3A3A3A)
-            },
-            fontSize      = 6.sp,
-            letterSpacing = 1.sp,
-            textAlign     = TextAlign.Center
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(info.icon, null, tint = iconTint, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text          = info.label,
+                color         = labelColor,
+                fontSize      = 7.sp,
+                letterSpacing = 1.sp,
+                textAlign     = TextAlign.Center,
+                maxLines      = 2,
+                lineHeight    = 9.sp
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text          = when {
+                    isActive -> "ACTIVE"
+                    !canAdd  -> "FULL"
+                    else     -> "ADD"
+                },
+                color         = when {
+                    isActive -> accent.copy(alpha = 0.75f)
+                    !canAdd  -> if (isDayMode) Color(0xFFADB5BD) else Color(0xFF282828)
+                    else     -> if (isDayMode) Color(0xFF495057) else Color(0xFF3A3A3A)
+                },
+                fontSize      = 6.sp,
+                letterSpacing = 1.sp,
+                textAlign     = TextAlign.Center
+            )
+            if (info.requiresNetwork) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text          = "NEEDS DATA",
+                    color         = networkTagColor,
+                    fontSize      = 5.sp,
+                    letterSpacing = 0.5.sp,
+                    textAlign     = TextAlign.Center
+                )
+            }
+        }
+        if (info.requiresNetwork) {
+            Icon(
+                imageVector        = Icons.Default.Wifi,
+                contentDescription = "Requires internet connection",
+                tint               = networkTagColor,
+                modifier           = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(10.dp)
+            )
+        }
     }
 }
