@@ -41,7 +41,14 @@ import java.util.concurrent.TimeUnit
  */
 class GeminiLiveTranscriber(
     private val apiKey: String,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    // Off by default for now — the naive RMS threshold can't be tuned
+    // without being in the actual car, and a false trigger from road/engine/
+    // AC noise (either "that's speech" or "that's a gap") closes the
+    // connection before the driver finishes talking, which reads as "didn't
+    // catch anything" even though the pipeline itself is fine. Manual
+    // tap-to-stop isolates that variable until this can be tuned properly.
+    private val autoStopOnSilence: Boolean = false
 ) {
     companion object {
         private const val SAMPLE_RATE = 16000
@@ -131,14 +138,16 @@ class GeminiLiveTranscriber(
                 var sumSquares = 0.0
                 for (i in 0 until read) sumSquares += buffer[i].toDouble() * buffer[i]
                 val rms = kotlin.math.sqrt(sumSquares / read)
-                if (rms >= SILENCE_RMS_THRESHOLD) {
-                    hasDetectedSpeech = true
-                    silentChunkCount = 0
-                } else if (hasDetectedSpeech) {
-                    silentChunkCount++
-                    if (silentChunkCount >= SILENT_CHUNKS_TO_AUTO_STOP) {
-                        stop()
-                        break
+                if (autoStopOnSilence) {
+                    if (rms >= SILENCE_RMS_THRESHOLD) {
+                        hasDetectedSpeech = true
+                        silentChunkCount = 0
+                    } else if (hasDetectedSpeech) {
+                        silentChunkCount++
+                        if (silentChunkCount >= SILENT_CHUNKS_TO_AUTO_STOP) {
+                            stop()
+                            break
+                        }
                     }
                 }
 
