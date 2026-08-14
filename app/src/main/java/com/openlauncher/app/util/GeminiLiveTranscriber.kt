@@ -52,7 +52,7 @@ class GeminiLiveTranscriber(
 ) {
     companion object {
         private const val SAMPLE_RATE = 16000
-        private const val CONNECT_TIMEOUT_MS = 5_000L
+        private const val CONNECT_TIMEOUT_MS = 10_000L
         private const val CLOSE_DRAIN_DELAY_MS = 2_000L
         // Simple energy-based VAD, not ML-based — cheap and good enough to
         // detect "driver stopped talking." Threshold is a starting point for
