@@ -53,7 +53,11 @@ class GeminiLiveTranscriber(
     companion object {
         private const val SAMPLE_RATE = 16000
         private const val CONNECT_TIMEOUT_MS = 10_000L
-        private const val CLOSE_DRAIN_DELAY_MS = 2_000L
+        // Widened from 2s while debugging a "server never replied" report —
+        // 13s of backlogged audio might just need more processing time after
+        // audioStreamEnd than 2s allows, though this is a guess since it's
+        // untestable from outside the car.
+        private const val CLOSE_DRAIN_DELAY_MS = 6_000L
         // Simple energy-based VAD, not ML-based — cheap and good enough to
         // detect "driver stopped talking." Threshold is a starting point for
         // in-cabin road noise; may need retuning once tested live in the car.
@@ -98,6 +102,7 @@ class GeminiLiveTranscriber(
     private var chunksSent = 0
     private var messagesReceived = 0
     private var lastMessageRaw: String? = null
+    private var maxRmsObserved = 0.0
     // If stop() (auto or manual) fires before the WebSocket handshake has
     // finished — very possible for a normal-length sentence, since connect
     // takes ~1-2s — the old code just closed immediately and silently
@@ -126,6 +131,7 @@ class GeminiLiveTranscriber(
         chunksQueuedOk = 0
         messagesReceived = 0
         lastMessageRaw = null
+        maxRmsObserved = 0.0
 
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
@@ -155,10 +161,16 @@ class GeminiLiveTranscriber(
                 if (read <= 0) continue
 
                 // RMS on the raw samples, before byte-packing — cheap way to
-                // tell "driver is talking" from "driver stopped."
+                // tell "driver is talking" from "driver stopped," and
+                // (via maxRmsObserved below) whether the mic is capturing
+                // real signal at all on this specific head unit's hardware,
+                // as opposed to a connectivity/protocol problem — this
+                // device's mic/audio stack has been quirky before (voltage
+                // reading, GPS provider accuracy).
                 var sumSquares = 0.0
                 for (i in 0 until read) sumSquares += buffer[i].toDouble() * buffer[i]
                 val rms = kotlin.math.sqrt(sumSquares / read)
+                if (rms > maxRmsObserved) maxRmsObserved = rms
                 if (autoStopOnSilence) {
                     if (rms >= SILENCE_RMS_THRESHOLD) {
                         hasDetectedSpeech = true
@@ -295,10 +307,18 @@ class GeminiLiveTranscriber(
                     // transcription" (shows what it actually said instead) —
                     // "No speech detected" alone collapses three very different
                     // bugs into one unhelpful message.
+                    val rmsNote = "peak mic level %.0f (%s)".format(
+                        maxRmsObserved,
+                        when {
+                            maxRmsObserved < 100 -> "near-silent — mic may not be capturing real audio"
+                            maxRmsObserved < 500 -> "quiet"
+                            else -> "clear signal"
+                        }
+                    )
                     val detail = when {
                         chunksSent == 0 -> "no audio was captured/sent"
-                        chunksQueuedOk == 0 -> "sent $chunksSent chunks, all failed to queue (socket closed?)"
-                        messagesReceived == 0 -> "sent $chunksSent chunks ($chunksQueuedOk queued ok), server never replied"
+                        chunksQueuedOk == 0 -> "sent $chunksSent chunks, all failed to queue (socket closed?), $rmsNote"
+                        messagesReceived == 0 -> "sent $chunksSent chunks ($chunksQueuedOk queued ok), server never replied, $rmsNote"
                         else -> "sent $chunksSent chunks, got $messagesReceived replies, last: ${lastMessageRaw?.take(200)}"
                     }
                     onError("No speech detected ($detail)")
