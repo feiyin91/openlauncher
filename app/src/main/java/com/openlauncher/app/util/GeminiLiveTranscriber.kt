@@ -193,22 +193,27 @@ class GeminiLiveTranscriber(
                     })
                 }
                 webSocket.send(gson.toJson(setup))
+
+                // The connection is usable the moment it actually opens and
+                // our setup message is sent — waiting for some server ack
+                // before flushing buffered audio was the real bug: nothing
+                // guarantees the Live API sends one before it expects audio
+                // to start streaming, so isConnected could stay false forever
+                // on a perfectly healthy socket until our own timeout killed
+                // it ("Gemini Live connect timed out" even though it wasn't
+                // a real network failure).
+                if (connectTimedOut) return
+                isConnected = true
+                timeoutJob.cancel()
+                synchronized(pendingChunks) {
+                    pendingChunks.forEach { sendAudioChunk(it) }
+                    pendingChunks.clear()
+                }
+                if (stopRequested) finalizeStop(webSocket)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (connectTimedOut) return
-                if (!isConnected) {
-                    isConnected = true
-                    timeoutJob.cancel()
-                    synchronized(pendingChunks) {
-                        pendingChunks.forEach { sendAudioChunk(it) }
-                        pendingChunks.clear()
-                    }
-                    if (stopRequested) {
-                        finalizeStop(webSocket)
-                        return
-                    }
-                }
                 val json = runCatching { gson.fromJson(text, JsonObject::class.java) }.getOrNull() ?: return
                 val serverContent = json.getAsJsonObject("serverContent") ?: return
                 val chunk = serverContent.getAsJsonObject("inputTranscription")?.get("text")?.asString
