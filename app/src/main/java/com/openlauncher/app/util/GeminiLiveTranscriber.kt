@@ -183,7 +183,16 @@ class GeminiLiveTranscriber(
                 val setup = JsonObject().apply {
                     add("setup", JsonObject().apply {
                         addProperty("model", "models/gemini-3.1-flash-live-preview")
-                        add("responseModalities", gson.toJsonTree(listOf("AUDIO")))
+                        // Confirmed live (server rejected it as top-level with
+                        // "1007 ... Unknown name 'responseModalities' at
+                        // 'setup': Cannot find field") — it belongs nested
+                        // under generationConfig on the wire, even though
+                        // Studio's SDK-level `config` object has it as a
+                        // sibling of inputAudioTranscription (the SDK reshapes
+                        // that before sending, it isn't the raw wire format).
+                        add("generationConfig", JsonObject().apply {
+                            add("responseModalities", gson.toJsonTree(listOf("AUDIO")))
+                        })
                         add("inputAudioTranscription", JsonObject())
                         add("systemInstruction", JsonObject().apply {
                             add("parts", gson.toJsonTree(listOf(mapOf(
