@@ -69,6 +69,15 @@ class GeminiLiveTranscriber(
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // streaming — no fixed read timeout
+        // Confirmed live: 199 chunks sent over ~20s, zero replies, no error —
+        // a silently dead connection, not a rejection. readTimeout(0) also
+        // disables OkHttp's ping-based WebSocket health check, so a NAT
+        // timeout or brief hotspot handoff killing the underlying socket
+        // (common on mobile networks) went completely undetected — sends
+        // just vanished into a socket that looked open but wasn't. A ping
+        // interval makes OkHttp actively probe and fail fast (onFailure)
+        // when pongs stop coming, instead of hanging for the full 20s cap.
+        .pingInterval(5, TimeUnit.SECONDS)
         .build()
     private val gson = Gson()
 
@@ -114,6 +123,7 @@ class GeminiLiveTranscriber(
         hasDetectedSpeech = false
         silentChunkCount = 0
         chunksSent = 0
+        chunksQueuedOk = 0
         messagesReceived = 0
         lastMessageRaw = null
 
@@ -287,7 +297,8 @@ class GeminiLiveTranscriber(
                     // bugs into one unhelpful message.
                     val detail = when {
                         chunksSent == 0 -> "no audio was captured/sent"
-                        messagesReceived == 0 -> "sent $chunksSent chunks, server never replied"
+                        chunksQueuedOk == 0 -> "sent $chunksSent chunks, all failed to queue (socket closed?)"
+                        messagesReceived == 0 -> "sent $chunksSent chunks ($chunksQueuedOk queued ok), server never replied"
                         else -> "sent $chunksSent chunks, got $messagesReceived replies, last: ${lastMessageRaw?.take(200)}"
                     }
                     onError("No speech detected ($detail)")
@@ -295,6 +306,8 @@ class GeminiLiveTranscriber(
             }
         })
     }
+
+    private var chunksQueuedOk = 0
 
     private fun sendAudioChunk(base64Pcm: String) {
         chunksSent++
@@ -306,7 +319,11 @@ class GeminiLiveTranscriber(
                 })
             })
         }
-        webSocket?.send(gson.toJson(msg))
+        // send() returning true only means OkHttp accepted it into the
+        // outgoing queue, not that it reached the server — but a false
+        // return (socket already closed/closing) is still a real, checkable
+        // failure the old code silently ignored.
+        if (webSocket?.send(gson.toJson(msg)) == true) chunksQueuedOk++
     }
 
     /** Signals end of speech, then waits before closing — closing immediately
