@@ -81,6 +81,14 @@ class GeminiLiveTranscriber(
     private val transcriptBuilder = StringBuilder()
     private var hasDetectedSpeech = false
     private var silentChunkCount = 0
+    // Diagnostic counters — surfaced in the "no speech" error message itself
+    // (not just logcat, which isn't practically reachable while driving)
+    // since "no speech detected" alone doesn't say whether audio was ever
+    // sent, whether the server ever replied at all, or replied with
+    // something other than a transcription.
+    private var chunksSent = 0
+    private var messagesReceived = 0
+    private var lastMessageRaw: String? = null
     // If stop() (auto or manual) fires before the WebSocket handshake has
     // finished — very possible for a normal-length sentence, since connect
     // takes ~1-2s — the old code just closed immediately and silently
@@ -105,6 +113,9 @@ class GeminiLiveTranscriber(
         transcriptBuilder.clear()
         hasDetectedSpeech = false
         silentChunkCount = 0
+        chunksSent = 0
+        messagesReceived = 0
+        lastMessageRaw = null
 
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
@@ -232,6 +243,8 @@ class GeminiLiveTranscriber(
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (connectTimedOut) return
+                messagesReceived++
+                lastMessageRaw = text
                 val json = runCatching { gson.fromJson(text, JsonObject::class.java) }.getOrNull() ?: return
                 val serverContent = json.getAsJsonObject("serverContent") ?: return
                 val chunk = serverContent.getAsJsonObject("inputTranscription")?.get("text")?.asString
@@ -266,13 +279,25 @@ class GeminiLiveTranscriber(
                 } else if (code != 1000) {
                     onError("Closed abnormally: $code $reason")
                 } else {
-                    onError("No speech detected.")
+                    // Distinguishes "audio never left the device" (chunksSent=0),
+                    // "sent audio but server never replied at all"
+                    // (messagesReceived=0), and "server replied but not with a
+                    // transcription" (shows what it actually said instead) —
+                    // "No speech detected" alone collapses three very different
+                    // bugs into one unhelpful message.
+                    val detail = when {
+                        chunksSent == 0 -> "no audio was captured/sent"
+                        messagesReceived == 0 -> "sent $chunksSent chunks, server never replied"
+                        else -> "sent $chunksSent chunks, got $messagesReceived replies, last: ${lastMessageRaw?.take(200)}"
+                    }
+                    onError("No speech detected ($detail)")
                 }
             }
         })
     }
 
     private fun sendAudioChunk(base64Pcm: String) {
+        chunksSent++
         val msg = JsonObject().apply {
             add("realtimeInput", JsonObject().apply {
                 add("audio", JsonObject().apply {

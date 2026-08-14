@@ -322,8 +322,11 @@ fun HomeScreen(
                 Text(
                     text     = bannerText,
                     color    = if (isDayMode) Color(0xFF111111) else Color.White,
-                    fontSize = 12.sp,
-                    maxLines = 2
+                    fontSize = 11.sp,
+                    // Bumped from 2 — Live error messages now carry real
+                    // diagnostic detail (chunk/message counts, raw server
+                    // text) and getting cut off defeats the point.
+                    maxLines = 6
                 )
             }
         }

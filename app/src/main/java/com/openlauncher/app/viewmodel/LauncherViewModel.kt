@@ -907,7 +907,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     _voiceState.value = VoiceAssistantState.ERROR
                     _voiceReply.value = "Live: $reason"
                     viewModelScope.launch {
-                        delay(1500)
+                        // Longer than usual while actively debugging this —
+                        // error messages now carry real diagnostic detail and
+                        // 1.5s wasn't enough time to read/photograph it before
+                        // it auto-advanced to the fallback recognizer.
+                        delay(4000)
                         startVoiceCommandFallback()
                     }
                 }
