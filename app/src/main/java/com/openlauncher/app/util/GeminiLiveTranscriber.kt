@@ -244,29 +244,35 @@ class GeminiLiveTranscriber(
                     })
                 }
                 webSocket.send(gson.toJson(setup))
-
-                // The connection is usable the moment it actually opens and
-                // our setup message is sent — waiting for some server ack
-                // before flushing buffered audio was the real bug: nothing
-                // guarantees the Live API sends one before it expects audio
-                // to start streaming, so isConnected could stay false forever
-                // on a perfectly healthy socket until our own timeout killed
-                // it ("Gemini Live connect timed out" even though it wasn't
-                // a real network failure).
-                if (connectTimedOut) return
-                isConnected = true
-                timeoutJob.cancel()
-                synchronized(pendingChunks) {
-                    pendingChunks.forEach { sendAudioChunk(it) }
-                    pendingChunks.clear()
-                }
-                if (stopRequested) finalizeStop(webSocket)
+                // Do NOT flush buffered audio here — confirmed via a standalone
+                // protocol test (same setup message, same audio format, run
+                // outside Android entirely) that the server reliably replies
+                // with {"setupComplete": {}} within ~0.3s, and that waiting for
+                // it before streaming produces a clean transcription end to
+                // end. Sending audio the instant the raw socket opens — before
+                // the server has processed setup — is almost certainly why
+                // every on-device attempt sent audio successfully but got zero
+                // replies: the audio arrived before the session was ready to
+                // consume it and was silently dropped, likely poisoning the
+                // rest of that session too. See onMessage for the actual gate.
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (connectTimedOut) return
                 messagesReceived++
                 lastMessageRaw = text
+                if (!isConnected) {
+                    isConnected = true
+                    timeoutJob.cancel()
+                    synchronized(pendingChunks) {
+                        pendingChunks.forEach { sendAudioChunk(it) }
+                        pendingChunks.clear()
+                    }
+                    if (stopRequested) {
+                        finalizeStop(webSocket)
+                        return
+                    }
+                }
                 val json = runCatching { gson.fromJson(text, JsonObject::class.java) }.getOrNull() ?: return
                 val serverContent = json.getAsJsonObject("serverContent") ?: return
                 val chunk = serverContent.getAsJsonObject("inputTranscription")?.get("text")?.asString
