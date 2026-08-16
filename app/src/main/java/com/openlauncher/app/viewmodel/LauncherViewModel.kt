@@ -1219,15 +1219,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             else -> destination
         } ?: return
         val app = getApplication<Application>()
+        // LAUNCH_ADJACENT *hints* Android to open this into a split/adjacent
+        // window pane instead of full-screen — but there's no public API to
+        // force real cross-app split-screen for a regular (non-system) app.
+        // Whether this actually produces a real split, or just opens Waze
+        // full-screen as normal, depends entirely on whether this specific
+        // ROM supports multi-window for regular apps — unverified, and
+        // possibly not, since the split-screen behavior seen with CarPlay is
+        // a different, privileged projection mechanism this app has no
+        // access to (same reason root/"Mini AA" were ruled out earlier).
+        val adjacentFlag = Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
         val uri = Uri.parse("waze://?q=${Uri.encode(resolved)}&navigate=yes")
-        val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or adjacentFlag)
         runCatching { app.startActivity(intent) }.onFailure {
             // Waze not installed — fall back to the generic navigation intent,
             // which prompts whatever maps app is available.
             runCatching {
                 app.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${Uri.encode(resolved)}"))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or adjacentFlag)
                 )
             }
         }
