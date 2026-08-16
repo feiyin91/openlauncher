@@ -15,6 +15,7 @@ data class VoiceActionResult(
     val query: String? = null,
     val destination: String? = null,
     val direction: String? = null,
+    val steps: Int? = null, // only for SET_VOLUME — e.g. "by two" -> 2
     val clockFormat: String? = null,
     val odometerKm: Double? = null,
     val volumeLiters: Double? = null,

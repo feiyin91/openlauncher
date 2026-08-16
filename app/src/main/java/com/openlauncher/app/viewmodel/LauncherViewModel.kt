@@ -1004,21 +1004,32 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 )
                 val raw = resp.text?.trim()
                     ?.removePrefix("```json")?.removePrefix("```")?.removeSuffix("```")?.trim()
+                android.util.Log.d("OpenLauncherVoice", "Gemini action response: $raw")
                 val result = raw?.let { runCatching { Gson().fromJson(it, VoiceActionResult::class.java) }.getOrNull() }
                 if (result == null) {
                     _voiceState.value = VoiceAssistantState.ERROR
-                    speak("Sorry, something went wrong understanding that.")
+                    // Was a generic "something went wrong" with no way to tell
+                    // whether Gemini replied with unparseable JSON or nothing at
+                    // all — same blind-debugging trap as the Live API's early
+                    // "no speech detected" reports. Show the raw response.
+                    speak("Sorry, something went wrong. Raw reply: ${raw?.take(150) ?: "(empty)"}")
                 } else {
                     dispatchVoiceAction(result)
                 }
             } catch (e: Exception) {
                 _voiceState.value = VoiceAssistantState.ERROR
-                speak("Couldn't reach the assistant — check your connection.")
+                speak("Couldn't reach the assistant: ${e::class.simpleName} ${e.message?.take(100) ?: ""}")
             }
         }
     }
 
     private fun dispatchVoiceAction(result: VoiceActionResult) {
+        // Debug tag while confirming this pipeline actually works end to end —
+        // makes it unambiguous on-screen which action Gemini's response
+        // actually matched, rather than inferring it from spokenReply alone
+        // (the exact blind spot that made the Live API bug take this long to
+        // pin down). Remove once REST/dispatch is confirmed solid.
+        android.util.Log.d("OpenLauncherVoice", "Dispatching: ${result.action} theme=${result.theme} direction=${result.direction} steps=${result.steps} screen=${result.screen}")
         when (result.action) {
             "SET_THEME" -> result.theme?.let { id ->
                 if (DASHBOARD_THEMES.any { it.id == id }) updateSettings { copy(themeId = id) }
@@ -1032,23 +1043,29 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             "SET_CLOCK_FORMAT" -> result.clockFormat?.let { fmt ->
                 updateSettings { copy(use24HourFormat = fmt.trim() == "24") }
             }
-            "SET_VOLUME" -> result.direction?.let { adjustDeviceVolume(it) }
+            "SET_VOLUME" -> result.direction?.let { adjustDeviceVolume(it, result.steps ?: 1) }
             "PLAY_MUSIC" -> result.query?.let { playFromSearch(it) }
             "NAVIGATE_WAZE" -> result.destination?.let { launchWazeNavigation(it) }
             "ADD_FUEL_ENTRY" -> {
                 val odo = result.odometerKm; val vol = result.volumeLiters; val cost = result.cost
                 if (odo != null && vol != null && cost != null) addFuelEntry(odo, vol, cost)
             }
-            else -> {} // ANSWER / UNKNOWN — nothing to dispatch, spokenReply covers it
+            "ANSWER", "UNKNOWN" -> {} // nothing to dispatch, spokenReply covers it
+            else -> {} // action string from Gemini didn't match any known case
         }
-        speak(result.spokenReply)
+        // Debug prefix while confirming this pipeline works end to end — shows
+        // exactly which action tag Gemini returned regardless of whether it
+        // matched a real dispatch case, instead of inferring it from
+        // spokenReply's wording alone. Remove once confirmed solid.
+        speak("[${result.action}] ${result.spokenReply}")
     }
 
-    private fun adjustDeviceVolume(direction: String) {
+    private fun adjustDeviceVolume(direction: String, steps: Int) {
         val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val clampedSteps = steps.coerceIn(1, 15) // sanity cap — never blast/mute-loop from a mis-parsed huge number
         when (direction.uppercase()) {
-            "UP"   -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0)
-            "DOWN" -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
+            "UP"   -> repeat(clampedSteps) { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0) }
+            "DOWN" -> repeat(clampedSteps) { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0) }
             "MUTE" -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
         }
     }
