@@ -872,19 +872,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private var liveTranscriber: GeminiLiveTranscriber? = null
 
-    // Gemini Live is tried first — meaningfully better at road/shop/place
-    // names than Android's on-device recognizer (the same reason Harvard
-    // Studio's lesson-note transcription moved off browser ASR for musical
-    // terms). Falls back to on-device SpeechRecognizer on any failure
-    // (offline, connect timeout, mic unavailable) so a voice command still
-    // works with no signal, just with lower proper-noun accuracy.
+    // Gemini Live is meaningfully better at road/shop/place names than
+    // Android's on-device recognizer (the same reason Harvard Studio's
+    // lesson-note transcription moved off browser ASR for musical terms) —
+    // but proved completely unreliable on this car's actual network
+    // (verified: the protocol itself is correct, tested end to end outside
+    // Android; failure is specific to the in-car network path, reproduced
+    // across two different phone hotspots — outbound sends always succeed,
+    // inbound server replies almost never arrive). On-device recognition has
+    // been reliable for every command tried, so it's now the primary path.
+    // Live's code stays in place, just unused, in case a working network
+    // path shows up later (e.g. the unit's own SIM data, if ever active).
+    private val USE_GEMINI_LIVE = false
+
     fun startVoiceCommand() {
         ensureTts()
         _voiceTranscript.value = null
         _voiceReply.value = null
         _voiceState.value = VoiceAssistantState.LISTENING
 
-        if (BuildConfig.GEMINI_API_KEY.isBlank()) {
+        if (!USE_GEMINI_LIVE || BuildConfig.GEMINI_API_KEY.isBlank()) {
             startVoiceCommandFallback()
             return
         }
