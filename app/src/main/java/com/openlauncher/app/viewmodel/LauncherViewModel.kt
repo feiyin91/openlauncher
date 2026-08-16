@@ -863,8 +863,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // actually takes.
     private var pendingSpeech: String? = null
 
-    private fun ensureTts() {
-        if (tts != null) return
+    // Retries whenever not-yet-ready, not just once ever — confirmed on-device
+    // this mattered: fixing the system TTS engine config afterward (installing/
+    // selecting Google's engine) had no effect until the app was fully killed
+    // and relaunched, because this launcher is the HOME app and Android keeps
+    // it alive in the background rather than restarting the process on a
+    // simple back-navigation — the original failed TextToSpeech instance was
+    // never recreated to pick up the fix.
+    fun ensureTts() {
+        if (tts != null && ttsReady) return
+        tts?.shutdown()
         tts = TextToSpeech(getApplication<Application>()) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {

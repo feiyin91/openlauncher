@@ -58,6 +58,7 @@ fun SettingsScreen(
     availableVoices: List<String> = emptyList(),
     ttsDebugInfo: String = "",
     onPreviewVoice: (String) -> Unit = {},
+    onRetryTts: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -426,6 +427,14 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    )
+                    SettingsDivider()
+                    SettingsButton(
+                        label    = "Retry",
+                        sublabel = "After fixing the system TTS engine, this launcher won't notice on its own — it only tries once and stays running in the background rather than restarting. Tap after making a change instead of relaunching the app.",
+                        icon     = Icons.Default.Refresh,
+                        accent   = accent,
+                        onClick  = onRetryTts
                     )
                 }
                 Row(

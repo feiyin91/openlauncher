@@ -301,7 +301,8 @@ class MainActivity : ComponentActivity() {
                                         onReset  = { vm.resetSettings() },
                                         availableVoices = availableVoices,
                                         ttsDebugInfo    = ttsDebugInfo,
-                                        onPreviewVoice  = { name -> vm.previewVoice(name) }
+                                        onPreviewVoice  = { name -> vm.previewVoice(name) },
+                                        onRetryTts      = { vm.ensureTts() }
                                     )
                                 }
                             }
