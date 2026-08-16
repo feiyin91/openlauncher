@@ -20,6 +20,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -49,6 +50,9 @@ import com.openlauncher.app.model.VoiceActionResult
 import com.openlauncher.app.model.WeatherState
 import com.openlauncher.app.service.MediaListenerService
 import com.openlauncher.app.util.GeminiLiveTranscriber
+import com.openlauncher.app.util.currentDayKey
+import com.openlauncher.app.util.haversineDistanceMeters
+import com.openlauncher.app.util.headingToCompassDirection
 import com.openlauncher.app.util.LocationCompassManager
 import com.openlauncher.app.util.LocationData
 import com.openlauncher.app.util.VoiceContext
@@ -450,6 +454,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // would lock the panel empty for a full throttle window instead of retrying.
     private var lastWeatherFetchMs = 0L
     private var lastPlaceFetchMs = 0L
+    // In-memory reference point for today's accumulated driving distance —
+    // deliberately not persisted itself (only the running total is); losing
+    // it on process death just means the next fix starts a fresh baseline
+    // instead of computing one huge/bogus delta against a stale point.
+    private var lastTripLocation: LocationData? = null
+    private var lastTripFlushMs = 0L
+    private var pendingTripDistanceKm = 0.0 // accumulated since the last DataStore write
 
     fun fetchWeather(lat: Double, lon: Double, metric: Boolean) {
         weatherJob?.cancel()
@@ -1033,17 +1044,28 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private fun pairedBluetoothDeviceNames(): List<String> {
+        val app = getApplication<Application>()
+        if (ContextCompat.checkSelfPermission(app, android.Manifest.permission.BLUETOOTH_CONNECT) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return emptyList()
+        val adapter = (app.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter
+            ?: return emptyList()
+        return runCatching { adapter.bondedDevices?.mapNotNull { it.name } ?: emptyList() }.getOrDefault(emptyList())
+    }
+
     private fun buildVoiceContext(): VoiceContext {
         val w = weather.value
         val loc = location.value
         val np = nowPlaying.value
         val fuel = settings.value.fuelLog.takeLast(3)
+        val isMetric = settings.value.unitSystem.name == "METRIC"
         return VoiceContext(
             currentThemeId  = settings.value.themeId,
             dayNightMode    = settings.value.dayNightMode.name,
             use24HourFormat = settings.value.use24HourFormat,
             weatherSummary  = w?.let {
-                "${it.temperatureDisplay(settings.value.unitSystem.name == "METRIC")}, feels ${it.feelsLikeDisplay(settings.value.unitSystem.name == "METRIC")}, ${it.conditionLabel.lowercase()}, wind ${it.windspeedDisplay(settings.value.unitSystem.name == "METRIC")}"
+                "${it.temperatureDisplay(isMetric)}, feels ${it.feelsLikeDisplay(isMetric)}, ${it.conditionLabel.lowercase()}, wind ${it.windspeedDisplay(isMetric)}"
             },
             placeName       = placeName.value,
             sunriseLocal    = loc?.let { val (r, _) = SunriseSunset.localMinutes(it.latitude, it.longitude); "%02d:%02d".format(r / 60, r % 60) },
@@ -1052,7 +1074,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             fuelLogSummary  = fuel.takeIf { it.isNotEmpty() }?.joinToString("; ") {
                 "%.1fL for %.2f at %.0fkm".format(it.volume, it.cost, it.odometerKm)
             },
-            unitSystem      = settings.value.unitSystem.name
+            unitSystem      = settings.value.unitSystem.name,
+            installedAppNames = apps.value.map { it.appName },
+            pairedBluetoothDeviceNames = pairedBluetoothDeviceNames(),
+            hasHomeAddress  = settings.value.homeAddress.isNotBlank(),
+            hasWorkAddress  = settings.value.workAddress.isNotBlank(),
+            todayDistanceSummary = if (settings.value.tripDayKey == currentDayKey()) {
+                val km = settings.value.tripDayDistanceKm + pendingTripDistanceKm
+                if (isMetric) "%.1f km driven today".format(km) else "%.1f miles driven today".format(km / 1.609)
+            } else null,
+            currentSpeedSummary = loc?.speedMps?.takeIf { it > 0.3f }?.let {
+                if (isMetric) "%.0f km/h".format(it * 3.6) else "%.0f mph".format(it * 2.237)
+            },
+            headingSummary  = compassBearing.value.takeIf { loc?.speedMps?.let { s -> s > 0.5f } == true }
+                ?.let { "heading ${headingToCompassDirection(it)}" }
         )
     }
 
@@ -1112,11 +1147,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             "SET_VOLUME" -> result.direction?.let { adjustDeviceVolume(it, result.steps ?: 1) }
             "PLAY_MUSIC" -> result.query?.let { playFromSearch(it) }
+            "SKIP_TRACK" -> skipNext()
+            "PREVIOUS_TRACK" -> skipPrev()
+            "PLAY_PAUSE" -> playPause()
             "NAVIGATE_WAZE" -> result.destination?.let { launchWazeNavigation(it) }
             "ADD_FUEL_ENTRY" -> {
                 val odo = result.odometerKm; val vol = result.volumeLiters; val cost = result.cost
                 if (odo != null && vol != null && cost != null) addFuelEntry(odo, vol, cost)
             }
+            "OPEN_APP" -> result.appName?.let { openAppByName(it) }
+            "BLUETOOTH_CONNECT" -> result.deviceName?.let { setBluetoothDeviceConnected(it, true) }
+            "BLUETOOTH_DISCONNECT" -> result.deviceName?.let { setBluetoothDeviceConnected(it, false) }
             "ANSWER", "UNKNOWN" -> {} // nothing to dispatch, spokenReply covers it
             else -> {} // action string from Gemini didn't match any known case
         }
@@ -1171,18 +1212,83 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // API call this app doesn't make yet (Gemini alone has no live business
     // data), so the prompt steers those to UNKNOWN instead of guessing.
     private fun launchWazeNavigation(destination: String) {
+        // "HOME"/"WORK" are sentinels the prompt asks Gemini to use for
+        // "navigate home"/"navigate to work" — substituted with the saved
+        // address here rather than making Gemini invent/guess one.
+        val resolved = when (destination) {
+            "HOME" -> settings.value.homeAddress.takeIf { it.isNotBlank() }
+            "WORK" -> settings.value.workAddress.takeIf { it.isNotBlank() }
+            else -> destination
+        } ?: return
         val app = getApplication<Application>()
-        val uri = Uri.parse("waze://?q=${Uri.encode(destination)}&navigate=yes")
+        val uri = Uri.parse("waze://?q=${Uri.encode(resolved)}&navigate=yes")
         val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { app.startActivity(intent) }.onFailure {
             // Waze not installed — fall back to the generic navigation intent,
             // which prompts whatever maps app is available.
             runCatching {
                 app.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${Uri.encode(destination)}"))
+                    Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${Uri.encode(resolved)}"))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
             }
+        }
+    }
+
+    // Fuzzy match against installed app names — Gemini already picks the
+    // closest name from the INSTALLED APPS list in the prompt, this just
+    // re-confirms case-insensitively rather than trusting an exact string
+    // match (LLM output casing/whitespace can vary slightly).
+    private fun openAppByName(name: String) {
+        val match = apps.value.find { it.appName.equals(name, ignoreCase = true) }
+            ?: apps.value.find { it.appName.contains(name, ignoreCase = true) || name.contains(it.appName, ignoreCase = true) }
+        match?.let { launchApp(it.packageName) }
+    }
+
+    // No stable public Android API connects/disconnects an already-paired
+    // device on a specific profile without user interaction — this uses the
+    // BluetoothA2dp profile proxy's connect()/disconnect() methods, which are
+    // hidden (@SystemApi) rather than officially public. Widely relied on by
+    // car-integration apps in practice, but not a guaranteed-stable API, and
+    // completely unverified on this unit's specific ROM/Bluetooth stack — see
+    // the fallback below.
+    private fun setBluetoothDeviceConnected(deviceName: String, connect: Boolean) {
+        val app = getApplication<Application>()
+        if (ContextCompat.checkSelfPermission(app, android.Manifest.permission.BLUETOOTH_CONNECT) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            openBluetoothSettingsFallback(app); return
+        }
+        val adapter = (app.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter
+        val device = runCatching {
+            adapter?.bondedDevices?.find { it.name?.equals(deviceName, ignoreCase = true) == true }
+        }.getOrNull()
+        if (adapter == null || device == null) {
+            openBluetoothSettingsFallback(app); return
+        }
+        val succeeded = runCatching {
+            adapter.getProfileProxy(app, object : android.bluetooth.BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: android.bluetooth.BluetoothProfile) {
+                    runCatching {
+                        val method = proxy.javaClass.getMethod(
+                            if (connect) "connect" else "disconnect",
+                            android.bluetooth.BluetoothDevice::class.java
+                        )
+                        method.invoke(proxy, device)
+                    }
+                    runCatching { adapter.closeProfileProxy(android.bluetooth.BluetoothProfile.A2DP, proxy) }
+                }
+                override fun onServiceDisconnected(profile: Int) {}
+            }, android.bluetooth.BluetoothProfile.A2DP)
+        }.getOrDefault(false)
+        if (!succeeded) openBluetoothSettingsFallback(app)
+    }
+
+    private fun openBluetoothSettingsFallback(app: Application) {
+        runCatching {
+            app.startActivity(
+                Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         }
     }
 
@@ -1217,7 +1323,48 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 if (now - lastPlaceFetchMs >= settings.value.locationRefreshInterval.millis) {
                     fetchPlaceName(loc.latitude, loc.longitude)
                 }
+                accumulateTripDistance(loc)
             }
+        }
+    }
+
+    // Runs off the same live-location stream Weather/Location already use —
+    // works regardless of whether Trip Tracker/Speedometer widgets are
+    // actually on screen, since it's driven by the location subscription
+    // itself, not any widget's own composition.
+    private fun accumulateTripDistance(loc: LocationData) {
+        val todayKey = currentDayKey()
+        if (settings.value.tripDayKey != todayKey) {
+            // First fix of a new day (or first ever) — start today's total
+            // from zero rather than carrying over/mixing with a prior day's
+            // distance, and don't count any distance for this tick since
+            // there's no same-day prior point to measure from yet.
+            pendingTripDistanceKm = 0.0
+            updateSettings { copy(tripDayKey = todayKey, tripDayDistanceKm = 0.0) }
+            lastTripLocation = loc
+            return
+        }
+        val last = lastTripLocation
+        lastTripLocation = loc
+        if (last != null) {
+            val deltaMeters = haversineDistanceMeters(last.latitude, last.longitude, loc.latitude, loc.longitude)
+            // Low end filters GPS jitter while stationary; high end filters a
+            // wild/bad single fix (teleport-style jump) from ever counting.
+            if (deltaMeters in 8.0..2000.0 && loc.accuracy <= 50f) {
+                pendingTripDistanceKm += deltaMeters / 1000.0
+            }
+        }
+        // Written to DataStore at most every 10s rather than on every GPS
+        // tick (as often as every few seconds while driving) — flash writes
+        // that frequent are unnecessary churn on this device's storage. Worst
+        // case on an unexpected crash: up to ~10s of distance since the last
+        // flush is lost, not the running total itself.
+        val now = System.currentTimeMillis()
+        if (pendingTripDistanceKm > 0.0 && now - lastTripFlushMs >= 10_000L) {
+            lastTripFlushMs = now
+            val toFlush = pendingTripDistanceKm
+            pendingTripDistanceKm = 0.0
+            updateSettings { copy(tripDayDistanceKm = tripDayDistanceKm + toFlush) }
         }
     }
 }

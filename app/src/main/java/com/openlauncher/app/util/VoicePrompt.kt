@@ -15,7 +15,14 @@ data class VoiceContext(
     val sunsetLocal: String?,      // "19:14"
     val nowPlayingSummary: String?, // e.g. "playing 'Here to Stay' by Jason LaPierre on Spotify"
     val fuelLogSummary: String?,   // e.g. last 3 fill-ups with computed efficiency, or null if empty
-    val unitSystem: String         // "METRIC" or "IMPERIAL"
+    val unitSystem: String,        // "METRIC" or "IMPERIAL"
+    val installedAppNames: List<String>, // for OPEN_APP fuzzy matching
+    val pairedBluetoothDeviceNames: List<String>,
+    val hasHomeAddress: Boolean,
+    val hasWorkAddress: Boolean,
+    val todayDistanceSummary: String?, // e.g. "42.3 km driven today" or null if no data yet
+    val currentSpeedSummary: String?,  // e.g. "62 km/h"
+    val headingSummary: String?        // e.g. "heading northeast"
 )
 
 private const val VALID_THEMES = "ignition, amber, cobalt, verdigris, plum, blueprint, circuit, instrument"
@@ -36,6 +43,8 @@ You are the voice assistant built into OpenLauncher, a custom Android car dashbo
   "odometerKm": <number, only for ADD_FUEL_ENTRY>,
   "volumeLiters": <number, only for ADD_FUEL_ENTRY>,
   "cost": <number, only for ADD_FUEL_ENTRY>,
+  "appName": "<only for OPEN_APP>",
+  "deviceName": "<only for BLUETOOTH_CONNECT/BLUETOOTH_DISCONNECT>",
   "spokenReply": "<a short natural-language reply, spoken aloud via text-to-speech — always required>"
 }
 
@@ -48,9 +57,12 @@ ACTIONS:
 - SET_CLOCK_FORMAT: clockFormat must be exactly "12" or "24".
 - SET_VOLUME: direction must be exactly one of: UP, DOWN, MUTE. steps is how many increments — "turn up volume by two" -> direction UP, steps 2. "turn it down" (no amount) -> steps 1.
 - PLAY_MUSIC: query is a short search string (song/artist/mood/genre) to search and play via the active media app, e.g. "upbeat driving music" or "Here to Stay by Corner Club".
-- NAVIGATE_WAZE: destination is the exact place name or address the driver said, verbatim or lightly cleaned up — do NOT invent or guess an address if they only gave a vague description (e.g. "somewhere for dinner") — in that case use UNKNOWN and say in spokenReply that fuzzy destination search isn't supported yet, only exact places/addresses.
+- SKIP_TRACK, PREVIOUS_TRACK, PLAY_PAUSE: no extra fields — direct media transport control ("skip this song", "go back a track", "pause"/"resume"/"play music" with nothing currently searched-for).
+- NAVIGATE_WAZE: destination is the exact place name or address the driver said, verbatim or lightly cleaned up. Special case: if the driver says "home" or "take me home", set destination to exactly "HOME" (only valid if hasHomeAddress below is true — otherwise use UNKNOWN and tell them to save a home address in Settings first). Same pattern for "work"/"office" -> destination "WORK", gated on hasWorkAddress. For any other vague description (e.g. "somewhere for dinner") — do NOT invent or guess an address — use UNKNOWN and say in spokenReply that fuzzy destination search isn't supported yet, only exact places/addresses/home/work.
 - ADD_FUEL_ENTRY: parse odometer reading (km — convert from miles if imperial units were stated, using ${'$'}{ctx.unitSystem}), volume (liters — convert from gallons if stated), and cost from what the driver said. All three are required; if any is missing, use UNKNOWN and ask for the missing value in spokenReply instead of guessing.
-- ANSWER: for any question answerable from the CURRENT CONTEXT below (weather, location, fuel efficiency, sunrise/sunset, now playing, current theme/settings). Put the actual answer in spokenReply, phrased naturally and briefly (one or two sentences — this gets read aloud while driving, not displayed as text to study).
+- OPEN_APP: appName should match (as closely as possible) one of the names in INSTALLED APPS below — pick the closest match to what the driver said, e.g. "open YouTube" -> the exact installed app name containing "YouTube". If nothing plausible matches, use UNKNOWN.
+- BLUETOOTH_CONNECT / BLUETOOTH_DISCONNECT: deviceName should match one of PAIRED BLUETOOTH DEVICES below as closely as possible, e.g. "connect to Zoe's phone" -> the paired device name closest to "Zoe". If nothing plausible matches, use UNKNOWN and say the device isn't paired.
+- ANSWER: for any question answerable from the CURRENT CONTEXT below (weather, location, fuel efficiency, sunrise/sunset, now playing, current theme/settings, today's driving distance, current speed/heading). Put the actual answer in spokenReply, phrased naturally and briefly (one or two sentences — this gets read aloud while driving, not displayed as text to study).
 - UNKNOWN: anything unclear, unsupported (calls, texts, general knowledge unrelated to this dashboard, fuzzy "find me somewhere" searches), or missing required info. spokenReply should briefly say why or ask a clarifying question.
 
 CURRENT CONTEXT:
@@ -61,6 +73,12 @@ CURRENT CONTEXT:
 - Sunrise/Sunset: ${ctx.sunriseLocal ?: "?"} / ${ctx.sunsetLocal ?: "?"}
 - Now playing: ${ctx.nowPlayingSummary ?: "nothing playing"}
 - Fuel log: ${ctx.fuelLogSummary ?: "no entries logged yet"}
+- Today's driving: ${ctx.todayDistanceSummary ?: "no distance tracked yet today"}
+- Current speed: ${ctx.currentSpeedSummary ?: "unavailable"}
+- Current heading: ${ctx.headingSummary ?: "unavailable"}
+- hasHomeAddress: ${ctx.hasHomeAddress}, hasWorkAddress: ${ctx.hasWorkAddress}
+- INSTALLED APPS: ${ctx.installedAppNames.joinToString(", ")}
+- PAIRED BLUETOOTH DEVICES: ${ctx.pairedBluetoothDeviceNames.ifEmpty { listOf("none") }.joinToString(", ")}
 
 Keep spokenReply short — this is heard while driving, not read.
 """.trimIndent()

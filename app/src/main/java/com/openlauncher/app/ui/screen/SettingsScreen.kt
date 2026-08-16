@@ -476,6 +476,60 @@ fun SettingsScreen(
             }
         }
 
+        // ── Navigation (voice-command saved addresses) ───────────────────────
+        Spacer(Modifier.height(4.dp))
+        SettingsSection("Navigation") {
+            var homeInput by remember(settings.homeAddress) { mutableStateOf(settings.homeAddress) }
+            SettingsRow(
+                label    = "Home Address",
+                sublabel = "Lets \"navigate home\" work by voice",
+                icon     = Icons.Default.Home
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value         = homeInput,
+                        onValueChange = { homeInput = it },
+                        placeholder   = { Text("Address", color = if (isDayMode) Color(0xFF999999) else Color(0xFF444444), fontSize = 12.sp) },
+                        singleLine    = true,
+                        textStyle     = LocalTextStyle.current.copy(fontSize = 12.sp, color = if (isDayMode) Color(0xFF111111) else Color.White),
+                        colors        = outlinedFieldColors(accent),
+                        modifier      = Modifier.width(180.dp)
+                    )
+                    if (homeInput != settings.homeAddress) {
+                        IconButton(onClick = { onUpdate { copy(homeAddress = homeInput) } }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Check, "Save", tint = accent, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
+            SettingsDivider()
+
+            var workInput by remember(settings.workAddress) { mutableStateOf(settings.workAddress) }
+            SettingsRow(
+                label    = "Work Address",
+                sublabel = "Lets \"navigate to work\" work by voice",
+                icon     = Icons.Default.Work
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value         = workInput,
+                        onValueChange = { workInput = it },
+                        placeholder   = { Text("Address", color = if (isDayMode) Color(0xFF999999) else Color(0xFF444444), fontSize = 12.sp) },
+                        singleLine    = true,
+                        textStyle     = LocalTextStyle.current.copy(fontSize = 12.sp, color = if (isDayMode) Color(0xFF111111) else Color.White),
+                        colors        = outlinedFieldColors(accent),
+                        modifier      = Modifier.width(180.dp)
+                    )
+                    if (workInput != settings.workAddress) {
+                        IconButton(onClick = { onUpdate { copy(workAddress = workInput) } }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Check, "Save", tint = accent, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Sidebar Shortcuts ─────────────────────────────────────────────────
         SettingsSection("Sidebar") {
             settings.shortcuts.forEachIndexed { index, shortcut ->

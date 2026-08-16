@@ -89,16 +89,30 @@ class MainActivity : ComponentActivity() {
             val availableVoices by vm.availableVoices.collectAsStateWithLifecycle()
             val ttsDebugInfo    by vm.ttsDebugInfo.collectAsStateWithLifecycle()
             val micContext = LocalContext.current
-            val micPermissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission()
-            ) { granted -> if (granted) vm.startVoiceCommand() }
+            // Bundled with the mic permission request rather than a separate
+            // prompt later — BLUETOOTH_CONNECT is needed for "connect to
+            // Zoe's phone"-style voice commands (enumerating/connecting
+            // paired devices by name), and asking once up front is less
+            // disruptive while driving than a second permission dialog
+            // interrupting a later command.
+            val voicePermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) { results -> if (results[Manifest.permission.RECORD_AUDIO] == true) vm.startVoiceCommand() }
             val onStartVoiceCommand: () -> Unit = {
-                if (ContextCompat.checkSelfPermission(micContext, Manifest.permission.RECORD_AUDIO) ==
+                val micGranted = ContextCompat.checkSelfPermission(micContext, Manifest.permission.RECORD_AUDIO) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
-                ) {
+                val btGranted = android.os.Build.VERSION.SDK_INT < 31 ||
+                    ContextCompat.checkSelfPermission(micContext, Manifest.permission.BLUETOOTH_CONNECT) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (micGranted && btGranted) {
                     vm.startVoiceCommand()
                 } else {
-                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    val perms = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                        arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.BLUETOOTH_CONNECT)
+                    } else {
+                        arrayOf(Manifest.permission.RECORD_AUDIO)
+                    }
+                    voicePermissionLauncher.launch(perms)
                 }
             }
 

@@ -20,5 +20,7 @@ data class VoiceActionResult(
     val odometerKm: Double? = null,
     val volumeLiters: Double? = null,
     val cost: Double? = null,
+    val appName: String? = null,       // only for OPEN_APP
+    val deviceName: String? = null,    // only for BLUETOOTH_CONNECT/DISCONNECT
     val spokenReply: String = "Sorry, I didn't catch that."
 )

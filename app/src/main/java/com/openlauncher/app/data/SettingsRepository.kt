@@ -67,6 +67,10 @@ class SettingsRepository(private val context: Context) {
         val LOCATION_DETAIL_LEVEL = stringPreferencesKey("location_detail_level")
         val LOCATION_REFRESH_INTERVAL = stringPreferencesKey("location_refresh_interval")
         val VOICE_ASSISTANT_VOICE_NAME = stringPreferencesKey("voice_assistant_voice_name")
+        val HOME_ADDRESS       = stringPreferencesKey("home_address")
+        val WORK_ADDRESS       = stringPreferencesKey("work_address")
+        val TRIP_DAY_KEY       = stringPreferencesKey("trip_day_key")
+        val TRIP_DAY_DISTANCE_KM = doublePreferencesKey("trip_day_distance_km")
         val SHOW_WIND_SPEED       = booleanPreferencesKey("show_wind_speed")
         val SHOW_FEELS_LIKE       = booleanPreferencesKey("show_feels_like")
         val SHOW_RAIN_CHANCE      = booleanPreferencesKey("show_rain_chance")
@@ -162,6 +166,10 @@ class SettingsRepository(private val context: Context) {
                 locationDetailLevel = prefs[Keys.LOCATION_DETAIL_LEVEL]?.let { runCatching { LocationDetailLevel.valueOf(it) }.getOrNull() } ?: defaults.locationDetailLevel,
                 locationRefreshInterval = prefs[Keys.LOCATION_REFRESH_INTERVAL]?.let { runCatching { LocationRefreshInterval.valueOf(it) }.getOrNull() } ?: defaults.locationRefreshInterval,
                 voiceAssistantVoiceName = prefs[Keys.VOICE_ASSISTANT_VOICE_NAME] ?: defaults.voiceAssistantVoiceName,
+                homeAddress      = prefs[Keys.HOME_ADDRESS] ?: defaults.homeAddress,
+                workAddress      = prefs[Keys.WORK_ADDRESS] ?: defaults.workAddress,
+                tripDayKey       = prefs[Keys.TRIP_DAY_KEY] ?: defaults.tripDayKey,
+                tripDayDistanceKm = prefs[Keys.TRIP_DAY_DISTANCE_KM] ?: defaults.tripDayDistanceKm,
                 showWindSpeed    = prefs[Keys.SHOW_WIND_SPEED] ?: defaults.showWindSpeed,
                 showFeelsLike    = prefs[Keys.SHOW_FEELS_LIKE] ?: defaults.showFeelsLike,
                 showRainChance   = prefs[Keys.SHOW_RAIN_CHANCE] ?: defaults.showRainChance,
@@ -233,6 +241,10 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.LOCATION_DETAIL_LEVEL] = s.locationDetailLevel.name
             prefs[Keys.LOCATION_REFRESH_INTERVAL] = s.locationRefreshInterval.name
             prefs[Keys.VOICE_ASSISTANT_VOICE_NAME] = s.voiceAssistantVoiceName
+            prefs[Keys.HOME_ADDRESS]       = s.homeAddress
+            prefs[Keys.WORK_ADDRESS]       = s.workAddress
+            prefs[Keys.TRIP_DAY_KEY]       = s.tripDayKey
+            prefs[Keys.TRIP_DAY_DISTANCE_KM] = s.tripDayDistanceKm
             prefs[Keys.SHOW_WIND_SPEED]    = s.showWindSpeed
             prefs[Keys.SHOW_FEELS_LIKE]    = s.showFeelsLike
             prefs[Keys.SHOW_RAIN_CHANCE]   = s.showRainChance

@@ -151,7 +151,17 @@ data class AppSettings(
     // Empty = system default TTS voice. Actual available voices depend on
     // what's installed on the device's ROM — populated at runtime, not a
     // fixed list, since this varies per unit/TTS engine.
-    val voiceAssistantVoiceName: String = ""
+    val voiceAssistantVoiceName: String = "",
+    val homeAddress: String = "",
+    val workAddress: String = "",
+    // Daily driving distance — accumulated from GPS deltas regardless of
+    // whether Trip Tracker/Speedometer widgets are actually on screen, so
+    // "how far have I driven today" works even with a bare dashboard.
+    // dayKey is a plain "yyyy-MM-dd" local-date string; a mismatch against
+    // today's date means this is stale data from a previous day and should
+    // reset before adding to it, rather than mixing days together.
+    val tripDayKey: String = "",
+    val tripDayDistanceKm: Double = 0.0
 )
 
 fun defaultShortcuts() = listOf(
