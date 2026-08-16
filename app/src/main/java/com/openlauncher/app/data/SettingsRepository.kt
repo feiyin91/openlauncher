@@ -66,6 +66,7 @@ class SettingsRepository(private val context: Context) {
         val SHOW_LOCATION         = booleanPreferencesKey("show_location")
         val LOCATION_DETAIL_LEVEL = stringPreferencesKey("location_detail_level")
         val LOCATION_REFRESH_INTERVAL = stringPreferencesKey("location_refresh_interval")
+        val VOICE_ASSISTANT_VOICE_NAME = stringPreferencesKey("voice_assistant_voice_name")
         val SHOW_WIND_SPEED       = booleanPreferencesKey("show_wind_speed")
         val SHOW_FEELS_LIKE       = booleanPreferencesKey("show_feels_like")
         val SHOW_RAIN_CHANCE      = booleanPreferencesKey("show_rain_chance")
@@ -160,6 +161,7 @@ class SettingsRepository(private val context: Context) {
                 showLocation     = prefs[Keys.SHOW_LOCATION] ?: defaults.showLocation,
                 locationDetailLevel = prefs[Keys.LOCATION_DETAIL_LEVEL]?.let { runCatching { LocationDetailLevel.valueOf(it) }.getOrNull() } ?: defaults.locationDetailLevel,
                 locationRefreshInterval = prefs[Keys.LOCATION_REFRESH_INTERVAL]?.let { runCatching { LocationRefreshInterval.valueOf(it) }.getOrNull() } ?: defaults.locationRefreshInterval,
+                voiceAssistantVoiceName = prefs[Keys.VOICE_ASSISTANT_VOICE_NAME] ?: defaults.voiceAssistantVoiceName,
                 showWindSpeed    = prefs[Keys.SHOW_WIND_SPEED] ?: defaults.showWindSpeed,
                 showFeelsLike    = prefs[Keys.SHOW_FEELS_LIKE] ?: defaults.showFeelsLike,
                 showRainChance   = prefs[Keys.SHOW_RAIN_CHANCE] ?: defaults.showRainChance,
@@ -230,6 +232,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.SHOW_LOCATION]      = s.showLocation
             prefs[Keys.LOCATION_DETAIL_LEVEL] = s.locationDetailLevel.name
             prefs[Keys.LOCATION_REFRESH_INTERVAL] = s.locationRefreshInterval.name
+            prefs[Keys.VOICE_ASSISTANT_VOICE_NAME] = s.voiceAssistantVoiceName
             prefs[Keys.SHOW_WIND_SPEED]    = s.showWindSpeed
             prefs[Keys.SHOW_FEELS_LIKE]    = s.showFeelsLike
             prefs[Keys.SHOW_RAIN_CHANCE]   = s.showRainChance

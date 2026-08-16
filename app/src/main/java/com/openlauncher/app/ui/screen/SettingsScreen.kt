@@ -55,6 +55,8 @@ fun SettingsScreen(
     accent: Color,
     onUpdate: (AppSettings.() -> AppSettings) -> Unit,
     onReset: () -> Unit,
+    availableVoices: List<String> = emptyList(),
+    onPreviewVoice: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -372,6 +374,55 @@ fun SettingsScreen(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = accent,
+                                selectedLabelColor     = onAccentColor(accent)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Voice Assistant ──────────────────────────────────────────────────
+        if (availableVoices.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            SettingsSection("Voice Assistant") {
+                SettingsRow(
+                    label    = "Reply Voice",
+                    sublabel = if (settings.voiceAssistantVoiceName.isEmpty()) "System default — tap a name to preview, tap again to select"
+                               else "Tap a name to preview, tap again to select",
+                    icon     = Icons.Default.RecordVoiceOver
+                ) {}
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    FilterChip(
+                        selected = settings.voiceAssistantVoiceName.isEmpty(),
+                        onClick  = { onUpdate { copy(voiceAssistantVoiceName = "") } },
+                        label    = { Text("Default", fontSize = 9.sp, letterSpacing = 0.5.sp) },
+                        colors   = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = accent,
+                            selectedLabelColor     = onAccentColor(accent)
+                        )
+                    )
+                    availableVoices.forEach { voiceName ->
+                        val isSelected = settings.voiceAssistantVoiceName == voiceName
+                        FilterChip(
+                            selected = isSelected,
+                            onClick  = {
+                                if (isSelected) onPreviewVoice(voiceName)
+                                else { onPreviewVoice(voiceName); onUpdate { copy(voiceAssistantVoiceName = voiceName) } }
+                            },
+                            // Raw voice names from the TTS engine are things
+                            // like "en-us-x-tpd-local" — not pretty, but this
+                            // is whatever's actually installed on this unit's
+                            // ROM, which isn't knowable ahead of time.
+                            label    = { Text(voiceName, fontSize = 9.sp, letterSpacing = 0.3.sp) },
+                            colors   = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = accent,
                                 selectedLabelColor     = onAccentColor(accent)
                             )

@@ -147,7 +147,11 @@ data class AppSettings(
     val showQuickTogglesInClock: Boolean = true,
     // Now Playing panel enrichment
     val showNowPlayingSourceBadge: Boolean = true,
-    val use24HourFormat: Boolean = true
+    val use24HourFormat: Boolean = true,
+    // Empty = system default TTS voice. Actual available voices depend on
+    // what's installed on the device's ROM — populated at runtime, not a
+    // fixed list, since this varies per unit/TTS engine.
+    val voiceAssistantVoiceName: String = ""
 )
 
 fun defaultShortcuts() = listOf(

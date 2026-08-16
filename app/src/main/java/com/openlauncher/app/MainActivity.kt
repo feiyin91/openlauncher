@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
             val voiceState      by vm.voiceState.collectAsStateWithLifecycle()
             val voiceTranscript by vm.voiceTranscript.collectAsStateWithLifecycle()
             val voiceReply      by vm.voiceReply.collectAsStateWithLifecycle()
+            val availableVoices by vm.availableVoices.collectAsStateWithLifecycle()
             val micContext = LocalContext.current
             val micPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
@@ -296,7 +297,9 @@ class MainActivity : ComponentActivity() {
                                         settings = settings,
                                         accent   = accent,
                                         onUpdate = { block -> vm.updateSettings(block) },
-                                        onReset  = { vm.resetSettings() }
+                                        onReset  = { vm.resetSettings() },
+                                        availableVoices = availableVoices,
+                                        onPreviewVoice  = { name -> vm.previewVoice(name) }
                                     )
                                 }
                             }

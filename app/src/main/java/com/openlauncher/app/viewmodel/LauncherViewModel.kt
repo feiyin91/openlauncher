@@ -843,16 +843,57 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _voiceReply = MutableStateFlow<String?>(null)
     val voiceReply: StateFlow<String?> = _voiceReply
 
+    // Populated once TTS actually initializes — real available voices are
+    // whatever's installed on this unit's specific ROM/TTS engine, not a
+    // fixed list, so this can't be known ahead of time.
+    private val _availableVoices = MutableStateFlow<List<String>>(emptyList())
+    val availableVoices: StateFlow<List<String>> = _availableVoices
+
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    // TextToSpeech's init callback is async and can take a beat — confirmed
+    // on-device this meant the very first spoken reply of a session silently
+    // never spoke (ttsReady was still false when speak() first ran), while
+    // the on-screen banner updated fine, making it look like TTS wasn't
+    // wired up at all rather than just not warmed up yet. Queuing the text
+    // instead of dropping it covers that window regardless of how long init
+    // actually takes.
+    private var pendingSpeech: String? = null
 
     private fun ensureTts() {
         if (tts != null) return
         tts = TextToSpeech(getApplication<Application>()) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
-            if (ttsReady) tts?.language = Locale.US
+            if (ttsReady) {
+                tts?.language = Locale.US
+                // English voices only — some engines ship dozens across every
+                // language, which would make for an unusable picker list.
+                _availableVoices.value = tts?.voices
+                    ?.filter { it.locale.language == "en" && !it.isNetworkConnectionRequired }
+                    ?.map { it.name }
+                    ?.sorted()
+                    ?: emptyList()
+                applySelectedVoice()
+                pendingSpeech?.let { tts?.speak(it, TextToSpeech.QUEUE_FLUSH, null, "voice_reply") }
+                pendingSpeech = null
+            }
         }
+    }
+
+    /** Lets Settings play a short sample so Harvard can hear a voice before picking it. */
+    fun previewVoice(voiceName: String) {
+        ensureTts()
+        val match = tts?.voices?.find { it.name == voiceName } ?: return
+        tts?.voice = match
+        tts?.speak("Navigating to Pasir Gudang.", TextToSpeech.QUEUE_FLUSH, null, "voice_preview")
+    }
+
+    private fun applySelectedVoice() {
+        val name = settings.value.voiceAssistantVoiceName
+        if (name.isEmpty()) return
+        val match = tts?.voices?.find { it.name == name } ?: return
+        tts?.voice = match
     }
 
     private fun speak(text: String) {
@@ -860,7 +901,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _voiceReply.value = text
         _voiceState.value = VoiceAssistantState.SPEAKING
         if (ttsReady) {
+            applySelectedVoice()
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "voice_reply")
+        } else {
+            pendingSpeech = text
         }
         // Whether or not TTS is ready, don't leave the UI stuck showing
         // "speaking" forever — settle back to idle after a beat.
@@ -1080,8 +1124,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // Standard MediaSession command — the same one "OK Google, play X on Spotify"
     // uses, so any MediaSession-compatible app already supports it with no
     // Spotify-specific integration needed on our end.
+    // Confirmed on-device: MediaSession's transportControls.playFromSearch()
+    // silently no-ops against Spotify's active session — Gemini's spokenReply
+    // said "playing some jazz" but nothing happened, meaning Spotify's session
+    // either doesn't declare ACTION_PLAY_FROM_SEARCH support or ignores a null
+    // extras bundle. Switched to the classic system-wide "play X" intent
+    // instead — the actual mechanism "OK Google, play X on Spotify" has used
+    // for years, and what Spotify registers an intent-filter for regardless
+    // of its current session's declared transport capabilities.
     private fun playFromSearch(query: String) {
-        nowPlaying.value?.controller?.transportControls?.playFromSearch(query, null)
+        val app = getApplication<Application>()
+        val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+            putExtra(android.app.SearchManager.QUERY, query)
+            putExtra("android.intent.extra.focus", "vnd.android.cursor.item/audio")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val spotifyIntent = Intent(intent).setPackage("com.spotify.music")
+        val launched = runCatching { app.startActivity(spotifyIntent) }.isSuccess
+        if (!launched) {
+            // Spotify not installed under that package name, or doesn't
+            // handle it — let Android route to whatever app does (may show
+            // a picker if more than one app registers for this action).
+            runCatching { app.startActivity(intent) }
+                .onFailure { android.util.Log.w("OpenLauncherVoice", "playFromSearch: no app handled play-from-search intent") }
+        }
     }
 
     // Waze's documented URI scheme — no Waze API needed. Exact place/address
@@ -1105,6 +1171,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     init {
+        ensureTts() // warm up early — see pendingSpeech note above
         loadInstalledApps()
         refreshConnectivity()
         startVoltageObserver()
