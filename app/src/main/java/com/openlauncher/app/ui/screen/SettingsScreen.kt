@@ -56,6 +56,7 @@ fun SettingsScreen(
     onUpdate: (AppSettings.() -> AppSettings) -> Unit,
     onReset: () -> Unit,
     availableVoices: List<String> = emptyList(),
+    ttsDebugInfo: String = "",
     onPreviewVoice: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -384,13 +385,21 @@ fun SettingsScreen(
         }
 
         // ── Voice Assistant ──────────────────────────────────────────────────
-        if (availableVoices.isNotEmpty()) {
+        // Always visible now — it was previously gated on availableVoices
+        // being non-empty, which meant the whole section silently vanished
+        // with no explanation whenever TTS hadn't finished initializing yet,
+        // or reported voices this build's filtering excluded entirely on this
+        // unit's specific ROM. ttsDebugInfo shows what was actually found.
+        run {
             Spacer(Modifier.height(4.dp))
             SettingsSection("Voice Assistant") {
                 SettingsRow(
                     label    = "Reply Voice",
-                    sublabel = if (settings.voiceAssistantVoiceName.isEmpty()) "System default — tap a name to preview, tap again to select"
-                               else "Tap a name to preview, tap again to select",
+                    sublabel = when {
+                        availableVoices.isEmpty() -> ttsDebugInfo.ifEmpty { "Looking for installed voices…" }
+                        settings.voiceAssistantVoiceName.isEmpty() -> "System default — tap a name to preview, tap again to select"
+                        else -> "Tap a name to preview, tap again to select"
+                    },
                     icon     = Icons.Default.RecordVoiceOver
                 ) {}
                 Row(

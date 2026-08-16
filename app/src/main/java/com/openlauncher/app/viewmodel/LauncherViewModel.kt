@@ -848,6 +848,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // fixed list, so this can't be known ahead of time.
     private val _availableVoices = MutableStateFlow<List<String>>(emptyList())
     val availableVoices: StateFlow<List<String>> = _availableVoices
+    private val _ttsDebugInfo = MutableStateFlow("TTS not yet initialized")
+    val ttsDebugInfo: StateFlow<String> = _ttsDebugInfo
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
@@ -867,16 +869,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
                 tts?.language = Locale.US
-                // English voices only — some engines ship dozens across every
-                // language, which would make for an unusable picker list.
-                _availableVoices.value = tts?.voices
-                    ?.filter { it.locale.language == "en" && !it.isNetworkConnectionRequired }
-                    ?.map { it.name }
-                    ?.sorted()
-                    ?: emptyList()
+                // Confirmed this needed to be robust: gating strictly on
+                // English + "doesn't require network" left the Settings
+                // section with nothing to show and no way to tell why on a
+                // ROM where that combination turns out to match zero voices.
+                // Prefer English if any exist, but fall back to whatever the
+                // engine actually reports rather than an empty list.
+                val all = tts?.voices?.toList() ?: emptyList()
+                val english = all.filter { it.locale.language == "en" }
+                val chosen = (english.ifEmpty { all }).map { it.name }.sorted()
+                _availableVoices.value = chosen
+                _ttsDebugInfo.value = "${all.size} voices total, ${english.size} English, showing ${chosen.size}"
                 applySelectedVoice()
                 pendingSpeech?.let { tts?.speak(it, TextToSpeech.QUEUE_FLUSH, null, "voice_reply") }
                 pendingSpeech = null
+            } else {
+                _ttsDebugInfo.value = "TTS engine failed to initialize (status=$status)"
             }
         }
     }

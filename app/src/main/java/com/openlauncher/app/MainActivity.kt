@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
             val voiceTranscript by vm.voiceTranscript.collectAsStateWithLifecycle()
             val voiceReply      by vm.voiceReply.collectAsStateWithLifecycle()
             val availableVoices by vm.availableVoices.collectAsStateWithLifecycle()
+            val ttsDebugInfo    by vm.ttsDebugInfo.collectAsStateWithLifecycle()
             val micContext = LocalContext.current
             val micPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
@@ -299,6 +300,7 @@ class MainActivity : ComponentActivity() {
                                         onUpdate = { block -> vm.updateSettings(block) },
                                         onReset  = { vm.resetSettings() },
                                         availableVoices = availableVoices,
+                                        ttsDebugInfo    = ttsDebugInfo,
                                         onPreviewVoice  = { name -> vm.previewVoice(name) }
                                     )
                                 }
