@@ -24,6 +24,14 @@
     <!-- Voice assistant: enumerate/connect paired Bluetooth devices by name -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <!-- Background trip-distance tracking (TripTrackingService) — a real
+         foreground service so GPS keeps getting polled regardless of which
+         app is in front (Waze full-screen, etc.), not just while this
+         launcher's own dashboard happens to be on screen. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Media session control (requires notification access grant by user) -->
     <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL" />
 
@@ -80,6 +88,14 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Always-on background trip-distance tracker (started from
+             MainActivity.onCreate, kept running independent of Activity
+             lifecycle) -->
+        <service
+            android:name=".service.TripTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
     </application>
 

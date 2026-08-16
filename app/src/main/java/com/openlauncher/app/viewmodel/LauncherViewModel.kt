@@ -51,7 +51,6 @@ import com.openlauncher.app.model.WeatherState
 import com.openlauncher.app.service.MediaListenerService
 import com.openlauncher.app.util.GeminiLiveTranscriber
 import com.openlauncher.app.util.currentDayKey
-import com.openlauncher.app.util.haversineDistanceMeters
 import com.openlauncher.app.util.headingToCompassDirection
 import com.openlauncher.app.util.LocationCompassManager
 import com.openlauncher.app.util.LocationData
@@ -454,13 +453,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // would lock the panel empty for a full throttle window instead of retrying.
     private var lastWeatherFetchMs = 0L
     private var lastPlaceFetchMs = 0L
-    // In-memory reference point for today's accumulated driving distance —
-    // deliberately not persisted itself (only the running total is); losing
-    // it on process death just means the next fix starts a fresh baseline
-    // instead of computing one huge/bogus delta against a stale point.
-    private var lastTripLocation: LocationData? = null
-    private var lastTripFlushMs = 0L
-    private var pendingTripDistanceKm = 0.0 // accumulated since the last DataStore write
+    // Trip-distance accumulation itself moved to TripTrackingService — a real
+    // foreground service, so it keeps running (and GPS keeps getting polled)
+    // regardless of which app is in the foreground (Waze full-screen, etc.),
+    // unlike this ViewModel's own location subscription which stops whenever
+    // this Activity does (see MainActivity onStart/onStop). This class just
+    // reads the DataStore total the service maintains.
 
     fun fetchWeather(lat: Double, lon: Double, metric: Boolean) {
         weatherJob?.cancel()
@@ -1080,7 +1078,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             hasHomeAddress  = settings.value.homeAddress.isNotBlank(),
             hasWorkAddress  = settings.value.workAddress.isNotBlank(),
             todayDistanceSummary = if (settings.value.tripDayKey == currentDayKey()) {
-                val km = settings.value.tripDayDistanceKm + pendingTripDistanceKm
+                val km = settings.value.tripDayDistanceKm
                 if (isMetric) "%.1f km driven today".format(km) else "%.1f miles driven today".format(km / 1.609)
             } else null,
             currentSpeedSummary = loc?.speedMps?.takeIf { it > 0.3f }?.let {
@@ -1323,48 +1321,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 if (now - lastPlaceFetchMs >= settings.value.locationRefreshInterval.millis) {
                     fetchPlaceName(loc.latitude, loc.longitude)
                 }
-                accumulateTripDistance(loc)
             }
-        }
-    }
-
-    // Runs off the same live-location stream Weather/Location already use —
-    // works regardless of whether Trip Tracker/Speedometer widgets are
-    // actually on screen, since it's driven by the location subscription
-    // itself, not any widget's own composition.
-    private fun accumulateTripDistance(loc: LocationData) {
-        val todayKey = currentDayKey()
-        if (settings.value.tripDayKey != todayKey) {
-            // First fix of a new day (or first ever) — start today's total
-            // from zero rather than carrying over/mixing with a prior day's
-            // distance, and don't count any distance for this tick since
-            // there's no same-day prior point to measure from yet.
-            pendingTripDistanceKm = 0.0
-            updateSettings { copy(tripDayKey = todayKey, tripDayDistanceKm = 0.0) }
-            lastTripLocation = loc
-            return
-        }
-        val last = lastTripLocation
-        lastTripLocation = loc
-        if (last != null) {
-            val deltaMeters = haversineDistanceMeters(last.latitude, last.longitude, loc.latitude, loc.longitude)
-            // Low end filters GPS jitter while stationary; high end filters a
-            // wild/bad single fix (teleport-style jump) from ever counting.
-            if (deltaMeters in 8.0..2000.0 && loc.accuracy <= 50f) {
-                pendingTripDistanceKm += deltaMeters / 1000.0
-            }
-        }
-        // Written to DataStore at most every 10s rather than on every GPS
-        // tick (as often as every few seconds while driving) — flash writes
-        // that frequent are unnecessary churn on this device's storage. Worst
-        // case on an unexpected crash: up to ~10s of distance since the last
-        // flush is lost, not the running total itself.
-        val now = System.currentTimeMillis()
-        if (pendingTripDistanceKm > 0.0 && now - lastTripFlushMs >= 10_000L) {
-            lastTripFlushMs = now
-            val toFlush = pendingTripDistanceKm
-            pendingTripDistanceKm = 0.0
-            updateSettings { copy(tripDayDistanceKm = tripDayDistanceKm + toFlush) }
         }
     }
 }

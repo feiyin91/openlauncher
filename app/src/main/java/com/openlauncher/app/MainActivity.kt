@@ -1,6 +1,7 @@
 package com.openlauncher.app
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +62,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hideSystemBars()
+
+        // Started once per process, independent of this Activity's own
+        // lifecycle from here on — keeps accumulating today's driving
+        // distance even while this launcher itself is backgrounded (Waze
+        // full-screen, etc.). No-ops safely (via its own runCatching) if
+        // location permission isn't granted yet.
+        runCatching {
+            androidx.core.content.ContextCompat.startForegroundService(
+                this, Intent(this, com.openlauncher.app.service.TripTrackingService::class.java)
+            )
+        }
 
         setContent {
             val settingsLoaded by vm.settingsLoaded.collectAsStateWithLifecycle()
