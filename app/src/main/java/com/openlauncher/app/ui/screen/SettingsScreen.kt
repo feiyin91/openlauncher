@@ -402,6 +402,32 @@ fun SettingsScreen(
                     },
                     icon     = Icons.Default.RecordVoiceOver
                 ) {}
+                if (availableVoices.isEmpty()) {
+                    // TTS failed at the Android engine level (status=-1
+                    // confirmed on-device) — not something this app's code
+                    // can route around. Most likely fix: no engine installed,
+                    // or one's installed but its voice data was never
+                    // downloaded (that's normally a one-time prompt nobody
+                    // would ever trigger by accident on a car head unit).
+                    SettingsDivider()
+                    SettingsButton(
+                        label    = "Open System TTS Settings",
+                        sublabel = "Check that a text-to-speech engine is installed and its voice data is downloaded",
+                        icon     = Icons.Default.Build,
+                        accent   = Color(0xFF993333),
+                        onClick  = {
+                            // No public Settings.ACTION_TTS_SETTINGS constant
+                            // exists — this is the actual system action name
+                            // (AOSP Settings app), same one used historically
+                            // by "OK Google" setup flows and similar apps.
+                            runCatching {
+                                context.startActivity(
+                                    Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        }
+                    )
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
