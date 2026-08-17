@@ -48,8 +48,17 @@ class WakeWordEngine(context: Context) {
         private const val MAX_MEL_FRAMES = MEL_WINDOW * 2 // only the last MEL_WINDOW are ever used; cap to bound memory
         private const val MAX_EMB_FRAMES = EMB_WINDOW * 2
 
+        /**
+         * v2 was retrained on several spellings of the phrase after v1 turned
+         * out to only reward a careful three-syllable "Sebastian" — Harvard's
+         * natural delivery peaked around 0.16 against a 0.4 threshold. Measured
+         * against the real models locally, v2 fires on six pronunciations v1
+         * missed entirely, loses none, and leaves unrelated speech at 0.001.
+         */
+        private const val CLASSIFIER = "hey_sebastian_v2.onnx"
+
         private val ASSET_FILES = listOf(
-            "melspectrogram.onnx", "embedding_model.onnx", "hey_sebastian.onnx", "hey_sebastian.onnx.data"
+            "melspectrogram.onnx", "embedding_model.onnx", CLASSIFIER, "$CLASSIFIER.data"
         )
 
         /**
@@ -61,6 +70,10 @@ class WakeWordEngine(context: Context) {
          */
         fun ensureModelsCopied(context: Context): File {
             val dir = File(context.filesDir, "wakeword").apply { mkdirs() }
+            // Drop models left behind by a previous version of the app, so
+            // superseded classifiers don't sit in internal storage forever on
+            // a device with limited space.
+            dir.listFiles()?.forEach { f -> if (f.name !in ASSET_FILES) runCatching { f.delete() } }
             for (name in ASSET_FILES) {
                 val out = File(dir, name)
                 val assetSize = context.assets.open("wakeword/$name").use { it.available().toLong() }
@@ -77,7 +90,7 @@ class WakeWordEngine(context: Context) {
     private val modelsDir = ensureModelsCopied(context)
     private val melSession = env.createSession(File(modelsDir, "melspectrogram.onnx").absolutePath)
     private val embSession = env.createSession(File(modelsDir, "embedding_model.onnx").absolutePath)
-    private val clfSession = env.createSession(File(modelsDir, "hey_sebastian.onnx").absolutePath)
+    private val clfSession = env.createSession(File(modelsDir, CLASSIFIER).absolutePath)
 
     private val melFrames = ArrayDeque<FloatArray>()
     private val embeddings = ArrayDeque<FloatArray>()
