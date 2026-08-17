@@ -1,0 +1,187 @@
+package com.openlauncher.app.service
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.openlauncher.app.MainActivity
+import com.openlauncher.app.util.VoiceAssistantBridge
+import com.openlauncher.app.util.WakeWordEngine
+import com.openlauncher.app.viewmodel.LauncherViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/**
+ * Always-on background listener for the "Hi Sebastian" wake word — runs the
+ * ONNX pipeline in WakeWordEngine continuously on raw mic audio, and hands
+ * off to LauncherViewModel (via VoiceAssistantBridge) the moment it hears it,
+ * same as tapping the mic button manually.
+ *
+ * A real foreground service for the same reason TripTrackingService is one:
+ * this needs to keep listening regardless of which app is in front (Waze
+ * full-screen, etc.), not just while OpenLauncher's own dashboard is on
+ * screen.
+ *
+ * Explicitly a personal build feature, not part of the upstream PR — see
+ * feat/gemini-voice-assistant branch notes.
+ */
+class WakeWordService : Service() {
+
+    companion object {
+        private const val CHANNEL_ID = "wake_word"
+        private const val NOTIFICATION_ID = 1002
+        private const val SAMPLE_RATE = 16000
+        // Below openWakeWord's 0.5 default (where training measured ~0.8
+        // false positives/hour) because a local sweep over the real models
+        // showed male voices scoring consistently lower than female ones on
+        // this classifier — 0.86 for Karen/Moira/Samantha, but 0.61-0.75 for
+        // Alex and only 0.23-0.28 for Daniel/Fred. 0.4 keeps a wide margin
+        // over the noise floor (unrelated speech scored 0.0009) while giving
+        // a male speaker room. A false trigger just opens the listener and
+        // times out harmlessly, so erring low is the cheaper mistake here.
+        private const val DETECTION_THRESHOLD = 0.4f
+        // Guards against re-triggering off the tail end of the same
+        // utterance still sitting in the sliding window right after a hit.
+        private const val COOLDOWN_MS = 3000L
+    }
+
+    private val scope = CoroutineScope(Dispatchers.Default + Job())
+    private var engine: WakeWordEngine? = null
+    private var listenJob: Job? = null
+    private var lastTriggerMs = 0L
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        // Loading the ONNX sessions can take a moment on this 2GB device —
+        // do it once here rather than per-chunk.
+        engine = runCatching { WakeWordEngine(applicationContext) }
+            .onFailure { VoiceAssistantBridge.wakeWordDebug.value = "engine failed: ${it.message}" }
+            .getOrNull()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForeground(NOTIFICATION_ID, buildNotification())
+        startListenLoop()
+        return START_STICKY
+    }
+
+    private fun startListenLoop() {
+        listenJob?.cancel()
+        listenJob = scope.launch {
+            val engine = engine ?: return@launch
+            val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            if (minBuf <= 0) {
+                VoiceAssistantBridge.wakeWordDebug.value = "getMinBufferSize failed"
+                return@launch
+            }
+            val bufferSize = maxOf(minBuf, WakeWordEngine.CHUNK_SAMPLES * 4)
+            val recorder = runCatching {
+                AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
+                )
+            }.onFailure { VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord ctor failed: ${it.message}" }
+                .getOrNull() ?: return@launch
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord not initialized (state=${recorder.state})"
+                recorder.release()
+                return@launch
+            }
+
+            val chunk = ShortArray(WakeWordEngine.CHUNK_SAMPLES)
+            recorder.startRecording()
+            var chunkCount = 0L
+            // Peak over a rolling ~5s window rather than since startup, so
+            // the readout reflects the attempt just made instead of being
+            // pinned high forever by one loud noise earlier in the drive.
+            var peakScore = 0f
+            var peakWindowStart = 0L
+            try {
+                while (isActive) {
+                    // Don't fight SpeechRecognizer for the mic once a voice
+                    // command is already underway — release the device by
+                    // just not reading from it until back to IDLE.
+                    if (VoiceAssistantBridge.voiceState.value != LauncherViewModel.VoiceAssistantState.IDLE) {
+                        delay(500)
+                        continue
+                    }
+                    val read = recorder.read(chunk, 0, chunk.size)
+                    if (read != chunk.size) {
+                        VoiceAssistantBridge.wakeWordDebug.value = "short read: $read/${chunk.size}"
+                        continue
+                    }
+                    chunkCount++
+                    val score = runCatching { engine.processChunk(chunk) }
+                        .onFailure { VoiceAssistantBridge.wakeWordDebug.value = "inference error: ${it.message}" }
+                        .getOrNull()
+                    if (score == null) {
+                        VoiceAssistantBridge.wakeWordDebug.value = "chunks:$chunkCount warming up…"
+                        continue
+                    }
+                    if (chunkCount - peakWindowStart >= 62) { // ~5s at 80ms/chunk
+                        peakWindowStart = chunkCount
+                        peakScore = 0f
+                    }
+                    peakScore = maxOf(peakScore, score)
+                    VoiceAssistantBridge.wakeWordDebug.value =
+                        "score:%.3f peak5s:%.3f (fires at %.2f)".format(score, peakScore, DETECTION_THRESHOLD)
+                    val now = System.currentTimeMillis()
+                    if (score >= DETECTION_THRESHOLD && now - lastTriggerMs > COOLDOWN_MS) {
+                        lastTriggerMs = now
+                        VoiceAssistantBridge.wakeWordDetected.tryEmit(Unit)
+                    }
+                }
+            } finally {
+                runCatching { recorder.stop() }
+                recorder.release()
+            }
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < 26) return
+        val channel = NotificationChannel(
+            CHANNEL_ID, "Wake Word Listening",
+            NotificationManager.IMPORTANCE_MIN // silent, minimal visibility — required to exist, not meant to be noticed
+        ).apply { description = "Listens for \"Hi Sebastian\" to start a voice command" }
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(): Notification {
+        val openAppIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Listening for \"Hi Sebastian\"")
+            .setContentText("Wake word detection active")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .build()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        listenJob?.cancel()
+        engine?.close()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+}

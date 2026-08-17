@@ -54,6 +54,7 @@ import com.openlauncher.app.util.currentDayKey
 import com.openlauncher.app.util.headingToCompassDirection
 import com.openlauncher.app.util.LocationCompassManager
 import com.openlauncher.app.util.LocationData
+import com.openlauncher.app.util.VoiceAssistantBridge
 import com.openlauncher.app.util.VoiceContext
 import com.openlauncher.app.util.buildVoiceSystemPrompt
 import kotlinx.coroutines.*
@@ -843,7 +844,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // parsing -> dispatch to a real action -> spoken (TTS) confirmation/answer.
     enum class VoiceAssistantState { IDLE, LISTENING, THINKING, SPEAKING, ERROR }
 
-    private val _voiceState = MutableStateFlow(VoiceAssistantState.IDLE)
+    // Backed by the app-wide bridge (not a fresh MutableStateFlow) so
+    // WakeWordService — a plain Service with no ViewModel reference — can
+    // read this same state to know when to release the mic instead of
+    // fighting SpeechRecognizer for it.
+    private val _voiceState: MutableStateFlow<VoiceAssistantState> = VoiceAssistantBridge.voiceState
     val voiceState: StateFlow<VoiceAssistantState> = _voiceState
 
     private val _voiceTranscript = MutableStateFlow<String?>(null)
@@ -859,6 +864,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val availableVoices: StateFlow<List<String>> = _availableVoices
     private val _ttsDebugInfo = MutableStateFlow("TTS not yet initialized")
     val ttsDebugInfo: StateFlow<String> = _ttsDebugInfo
+    val wakeWordDebug: StateFlow<String> = VoiceAssistantBridge.wakeWordDebug
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
@@ -1302,6 +1308,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         ensureTts() // warm up early — see pendingSpeech note above
+        viewModelScope.launch {
+            VoiceAssistantBridge.wakeWordDetected.collect { startVoiceCommand() }
+        }
         loadInstalledApps()
         refreshConnectivity()
         startVoltageObserver()

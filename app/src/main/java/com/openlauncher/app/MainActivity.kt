@@ -74,6 +74,21 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // "Hi Sebastian" wake-word listener — only meaningful once mic
+        // permission is granted (checked here for the case it was already
+        // granted in a prior session; also (re)started from the mic
+        // permission launcher below the moment it's first granted, so a
+        // fresh install doesn't need an app restart before wake word works).
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this, Intent(this, com.openlauncher.app.service.WakeWordService::class.java)
+                )
+            }
+        }
+
         setContent {
             val settingsLoaded by vm.settingsLoaded.collectAsStateWithLifecycle()
             val settings       by vm.settings.collectAsStateWithLifecycle()
@@ -100,6 +115,7 @@ class MainActivity : ComponentActivity() {
             val voiceReply      by vm.voiceReply.collectAsStateWithLifecycle()
             val availableVoices by vm.availableVoices.collectAsStateWithLifecycle()
             val ttsDebugInfo    by vm.ttsDebugInfo.collectAsStateWithLifecycle()
+            val wakeWordDebug   by vm.wakeWordDebug.collectAsStateWithLifecycle()
             val micContext = LocalContext.current
             // Bundled with the mic permission request rather than a separate
             // prompt later — BLUETOOTH_CONNECT is needed for "connect to
@@ -109,7 +125,16 @@ class MainActivity : ComponentActivity() {
             // interrupting a later command.
             val voicePermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
-            ) { results -> if (results[Manifest.permission.RECORD_AUDIO] == true) vm.startVoiceCommand() }
+            ) { results ->
+                if (results[Manifest.permission.RECORD_AUDIO] == true) {
+                    vm.startVoiceCommand()
+                    runCatching {
+                        androidx.core.content.ContextCompat.startForegroundService(
+                            this@MainActivity, Intent(this@MainActivity, com.openlauncher.app.service.WakeWordService::class.java)
+                        )
+                    }
+                }
+            }
             val onStartVoiceCommand: () -> Unit = {
                 val micGranted = ContextCompat.checkSelfPermission(micContext, Manifest.permission.RECORD_AUDIO) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -299,7 +324,8 @@ class MainActivity : ComponentActivity() {
                                         voiceTranscript       = voiceTranscript,
                                         voiceReply            = voiceReply,
                                         onStartVoiceCommand   = onStartVoiceCommand,
-                                        onStopVoiceCommand    = { vm.stopVoiceCommand() }
+                                        onStopVoiceCommand    = { vm.stopVoiceCommand() },
+                                        wakeWordDebug         = wakeWordDebug
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(

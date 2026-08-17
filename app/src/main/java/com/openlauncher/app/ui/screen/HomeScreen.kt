@@ -146,6 +146,7 @@ fun HomeScreen(
     voiceReply: String? = null,
     onStartVoiceCommand: () -> Unit = {},
     onStopVoiceCommand: () -> Unit = {},
+    wakeWordDebug: String = "",
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -298,6 +299,20 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+
+        // Wake-word debug readout — no USB debugging on this ROM, so this is
+        // the only way to see the live detection score while testing "Hi
+        // Sebastian" sensitivity. Remove once tuning is done and confirmed
+        // reliable in real driving conditions.
+        if (wakeWordDebug.isNotBlank()) {
+            Text(
+                text       = "wakeword: $wakeWordDebug",
+                color      = headerTextColor.copy(alpha = 0.5f),
+                fontSize   = 9.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier   = Modifier.padding(horizontal = 20.dp)
+            )
         }
 
         AnimatedVisibility(

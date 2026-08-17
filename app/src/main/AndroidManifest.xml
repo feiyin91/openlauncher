@@ -30,6 +30,7 @@
          launcher's own dashboard happens to be on screen. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Media session control (requires notification access grant by user) -->
@@ -96,6 +97,13 @@
             android:name=".service.TripTrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- "Hi Sebastian" wake-word listener — personal build feature, not
+             part of the upstream PR. See feat/gemini-voice-assistant. -->
+        <service
+            android:name=".service.WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
     </application>
 

@@ -27,6 +27,13 @@ android {
         versionCode    = 6
         versionName    = "0.0.5"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+
+        // ONNX Runtime bundles native libs for every ABI by default; this
+        // head unit's Unisoc UIS8581A is arm64 only, so the rest is dead
+        // weight (was ~20MB of the APK before this).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -50,6 +57,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // Wake-word ONNX models are bundled as raw assets — keep them
+    // uncompressed in the APK so asset InputStream sizes (used to detect
+    // whether they've already been copied to internal storage) are exact,
+    // and so the classifier's external-data companion file loads reliably.
+    androidResources {
+        noCompress += listOf("onnx", "data")
     }
 }
 
@@ -84,6 +99,10 @@ dependencies {
 
     // Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.37.3")
+
+    // On-device inference for the "Hi Sebastian" wake word (Gemini Live's
+    // network path proved unreliable in-car; this runs fully offline)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
