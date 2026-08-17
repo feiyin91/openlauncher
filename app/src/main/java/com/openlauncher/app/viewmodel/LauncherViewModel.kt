@@ -851,10 +851,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _voiceState: MutableStateFlow<VoiceAssistantState> = VoiceAssistantBridge.voiceState
     val voiceState: StateFlow<VoiceAssistantState> = _voiceState
 
-    private val _voiceTranscript = MutableStateFlow<String?>(null)
+    // Shared across instances alongside _voiceState — see VoiceAssistantBridge.
+    private val _voiceTranscript: MutableStateFlow<String?> = VoiceAssistantBridge.voiceTranscript
     val voiceTranscript: StateFlow<String?> = _voiceTranscript
 
-    private val _voiceReply = MutableStateFlow<String?>(null)
+    private val _voiceReply: MutableStateFlow<String?> = VoiceAssistantBridge.voiceReply
     val voiceReply: StateFlow<String?> = _voiceReply
 
     // Populated once TTS actually initializes — real available voices are
