@@ -1052,6 +1052,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         audioFocusRequest = null
     }
 
+    /** How many times to wait out a busy recognition service before giving up. */
+    private val RECOGNIZER_BUSY_RETRIES = 3
+
     /** Maps SpeechRecognizer's error ints to something readable on the dashboard. */
     private fun recognizerErrorName(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network timeout"
@@ -1066,7 +1069,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         else -> "code $error"
     }
 
-    private fun startVoiceCommandFallback() {
+    /**
+     * @param attempt retry counter for ERROR_RECOGNIZER_BUSY — see onError.
+     */
+    private fun startVoiceCommandFallback(attempt: Int = 0) {
         val app = getApplication<Application>()
         if (!SpeechRecognizer.isRecognitionAvailable(app)) {
             _voiceState.value = VoiceAssistantState.ERROR
@@ -1085,6 +1091,24 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
                 override fun onError(error: Int) {
+                    // The system recognition service is shared across apps,
+                    // and something else can be holding a session — opening
+                    // Spotify alone is enough to trigger this on this unit,
+                    // no playback involved, which points at its own "Hey
+                    // Spotify" listener. Give it a moment to let go rather
+                    // than failing the command outright; this is transient
+                    // often enough to be worth the wait.
+                    if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY && attempt < RECOGNIZER_BUSY_RETRIES) {
+                        _voiceReply.value = "recognizer busy, retrying…"
+                        viewModelScope.launch {
+                            // Tearing down from inside a callback is what the
+                            // docs warn against, so let this callback unwind
+                            // before the retry rebuilds the recognizer.
+                            delay(700)
+                            startVoiceCommandFallback(attempt + 1)
+                        }
+                        return
+                    }
                     abandonVoiceAudioFocus()
                     _voiceState.value = VoiceAssistantState.ERROR
                     speak("Didn't catch that.")
@@ -1105,6 +1129,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     } else {
                         _voiceTranscript.value = text
                         processVoiceCommand(text)
+                    }
+                    // Hand the shared recognition service back rather than
+                    // sitting on a session until the next command needs one.
+                    viewModelScope.launch {
+                        delay(200)
+                        runCatching { speechRecognizer?.destroy() }
+                        speechRecognizer = null
                     }
                 }
                 override fun onPartialResults(partialResults: Bundle?) {}
