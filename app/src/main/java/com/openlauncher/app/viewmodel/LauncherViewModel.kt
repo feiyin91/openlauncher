@@ -1304,7 +1304,24 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             "DOWN" -> repeat(clampedSteps) { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0) }
             "MUTE" -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
         }
+        refreshVolumeLevel()
     }
+
+    // Driver sits on the right of this vehicle, but the unit's physical
+    // volume rocker runs down its LEFT bezel alongside MIC/RST/power/home/
+    // back — a genuine reach problem, not a preference. This mirrors that
+    // control on-screen on the right instead.
+    private val _volumeLevel = MutableStateFlow(0f) // 0f..1f, STREAM_MUSIC current/max
+    val volumeLevel: StateFlow<Float> = _volumeLevel
+
+    private fun refreshVolumeLevel() {
+        val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        _volumeLevel.value = am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+    }
+
+    fun bumpVolume(up: Boolean) = adjustDeviceVolume(if (up) "UP" else "DOWN", 1)
 
     // Standard MediaSession command — the same one "OK Google, play X on Spotify"
     // uses, so any MediaSession-compatible app already supports it with no
@@ -1432,6 +1449,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         ensureTts() // warm up early — see pendingSpeech note above
+        refreshVolumeLevel()
         viewModelScope.launch {
             VoiceAssistantBridge.wakeWordDetected.collect { startVoiceCommand() }
         }

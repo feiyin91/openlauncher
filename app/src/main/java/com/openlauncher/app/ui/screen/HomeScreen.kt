@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -42,6 +44,7 @@ import com.openlauncher.app.data.WidgetConfig
 import com.openlauncher.app.model.NowPlayingState
 import com.openlauncher.app.model.WeatherState
 import com.openlauncher.app.ui.theme.LocalDayMode
+import com.openlauncher.app.ui.theme.onAccentColor
 import com.openlauncher.app.ui.widget.*
 import java.util.Calendar
 import com.openlauncher.app.util.LocationData
@@ -147,6 +150,9 @@ fun HomeScreen(
     onStartVoiceCommand: () -> Unit = {},
     onStopVoiceCommand: () -> Unit = {},
     wakeWordDebug: String = "",
+    volumeLevel: Float = 0f,
+    onVolumeUp: () -> Unit = {},
+    onVolumeDown: () -> Unit = {},
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -190,7 +196,8 @@ fun HomeScreen(
     var widgetLibraryOpen by remember { mutableStateOf(false) }
     var presetPickerOpen by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
 
         // ── Header ──────────────────────────────────────────────────────────
         Row(
@@ -228,37 +235,11 @@ fun HomeScreen(
             AnimatedVisibility(visible = isData, enter = fadeIn(), exit = fadeOut()) {
                 Icon(Icons.Default.SignalCellularAlt, "Data", tint = statusIconColor, modifier = Modifier.size(16.dp))
             }
-            Spacer(Modifier.width(8.dp))
-            val micColor = when (voiceState) {
-                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING -> Color(0xFFE05252)
-                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.THINKING   -> accent
-                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.SPEAKING   -> accent
-                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR       -> Color(0xFFE05252)
-                com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE        -> controlIconColor
-            }
-            IconButton(
-                // Tap to start listening; tap again while LISTENING to signal
-                // "done speaking" (Live API streams continuously — unlike the
-                // fallback SpeechRecognizer, it doesn't auto-detect silence).
-                // Disabled mid-THINKING/SPEAKING — nothing to toggle there.
-                onClick  = {
-                    if (voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING) {
-                        onStopVoiceCommand()
-                    } else {
-                        onStartVoiceCommand()
-                    }
-                },
-                enabled  = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE ||
-                           voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING,
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(
-                    imageVector        = if (voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
-                    contentDescription = "Voice assistant",
-                    tint               = micColor,
-                    modifier           = Modifier.size(16.dp)
-                )
-            }
+            // Voice assistant trigger used to live here as a small 28dp
+            // header icon — moved to a large floating button (see
+            // VoiceFab below) since it's the hands-on-wheel fallback for
+            // when the wake word can't be heard over music, and a header
+            // icon that size wasn't reliably hittable while driving.
             if (isLandscape) {
                 Spacer(Modifier.width(8.dp))
                 if (editMode) {
@@ -672,6 +653,38 @@ fun HomeScreen(
         }
     }
 
+    // ── Voice assistant — large floating trigger ─────────────────────────────
+    // The dependable path when the wake word can't be heard (loudest failure
+    // mode: driving with music on — see WakeWordService). Bottom-RIGHT: the
+    // driver sits on the right in this vehicle, and this unit's own physical
+    // buttons running down its left bezel are already a reach for them — put
+    // this on the far side of that problem, not the same side as it.
+    VoiceFab(
+        voiceState = voiceState,
+        accent = accent,
+        onStart = onStartVoiceCommand,
+        onStop = onStopVoiceCommand,
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(end = 20.dp, bottom = 20.dp)
+    )
+
+    // ── Volume rocker ─────────────────────────────────────────────────────────
+    // Same reach problem, same fix: the unit's physical rocker is on the far
+    // left bezel, so this mirrors it on-screen on the driver's side instead.
+    // Vertically centered on the right edge so it doesn't compete with the
+    // voice button's corner.
+    VolumeRocker(
+        level = volumeLevel,
+        accent = accent,
+        onUp = onVolumeUp,
+        onDown = onVolumeDown,
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .padding(end = 20.dp)
+    )
+    }
+
     // ── Widget context menu (long-press any cell) ────────────────────────────
     contextMenuId?.let { id ->
         WidgetContextMenu(
@@ -745,6 +758,96 @@ fun HomeScreen(
             onApply   = { preset -> onApplyPreset(preset); presetPickerOpen = false },
             onDismiss = { presetPickerOpen = false }
         )
+    }
+}
+
+/**
+ * Large always-reachable voice trigger — the manual fallback for when the
+ * "Hi Sebastian" wake word can't be heard, which in practice means whenever
+ * music is playing (this unit has no acoustic echo cancellation hardware, so
+ * that's not something on-device tuning can fully solve). Used to be a 28dp
+ * icon in the header; that's not a realistic target to hit by feel while
+ * driving, which is the whole point of this button existing.
+ */
+@Composable
+private fun VoiceFab(
+    voiceState: com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState,
+    accent: Color,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listening = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING
+    val enabled = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE || listening
+    val fillColor =
+        if (listening || voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR)
+            Color(0xFFE05252) else accent
+
+    LargeFloatingActionButton(
+        onClick = { if (enabled) { if (listening) onStop() else onStart() } },
+        modifier = modifier
+            .size(72.dp)
+            .alpha(if (enabled) 1f else 0.5f),
+        shape = CircleShape,
+        containerColor = fillColor,
+        contentColor = onAccentColor(fillColor),
+        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 8.dp)
+    ) {
+        Icon(
+            imageVector        = if (listening) Icons.Default.Stop else Icons.Default.Mic,
+            contentDescription = "Voice assistant",
+            modifier           = Modifier.size(32.dp)
+        )
+    }
+}
+
+/**
+ * On-screen mirror of the unit's physical volume rocker, which sits on the
+ * far-left bezel — a real reach problem for a driver on the right, not
+ * something solved by just knowing the hardware button is there.
+ */
+@Composable
+private fun VolumeRocker(
+    level: Float,
+    accent: Color,
+    onUp: () -> Unit,
+    onDown: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(28.dp))
+            .background(accent.copy(alpha = 0.12f))
+            .padding(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        FloatingActionButton(
+            onClick        = onUp,
+            modifier       = Modifier.size(56.dp),
+            shape          = CircleShape,
+            containerColor = accent,
+            contentColor   = onAccentColor(accent),
+            elevation      = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp, pressedElevation = 6.dp)
+        ) {
+            Icon(Icons.Default.VolumeUp, contentDescription = "Volume up", modifier = Modifier.size(26.dp))
+        }
+        Text(
+            text       = "${(level * 100).roundToInt()}%",
+            color      = accent,
+            fontSize   = 11.sp,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+        )
+        FloatingActionButton(
+            onClick        = onDown,
+            modifier       = Modifier.size(56.dp),
+            shape          = CircleShape,
+            containerColor = accent,
+            contentColor   = onAccentColor(accent),
+            elevation      = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp, pressedElevation = 6.dp)
+        ) {
+            Icon(Icons.Default.VolumeDown, contentDescription = "Volume down", modifier = Modifier.size(26.dp))
+        }
     }
 }
 

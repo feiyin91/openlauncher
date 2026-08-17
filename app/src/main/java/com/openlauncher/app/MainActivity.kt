@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
             val availableVoices by vm.availableVoices.collectAsStateWithLifecycle()
             val ttsDebugInfo    by vm.ttsDebugInfo.collectAsStateWithLifecycle()
             val wakeWordDebug   by vm.wakeWordDebug.collectAsStateWithLifecycle()
+            val volumeLevel     by vm.volumeLevel.collectAsStateWithLifecycle()
             val micContext = LocalContext.current
             // Bundled with the mic permission request rather than a separate
             // prompt later — BLUETOOTH_CONNECT is needed for "connect to
@@ -325,7 +326,10 @@ class MainActivity : ComponentActivity() {
                                         voiceReply            = voiceReply,
                                         onStartVoiceCommand   = onStartVoiceCommand,
                                         onStopVoiceCommand    = { vm.stopVoiceCommand() },
-                                        wakeWordDebug         = wakeWordDebug
+                                        wakeWordDebug         = wakeWordDebug,
+                                        volumeLevel           = volumeLevel,
+                                        onVolumeUp            = { vm.bumpVolume(up = true) },
+                                        onVolumeDown          = { vm.bumpVolume(up = false) }
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(
