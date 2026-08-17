@@ -171,6 +171,24 @@ class WakeWordService : Service() {
             return false
         }
 
+        // Subtract what the unit is playing through its own speakers, so the
+        // wake word isn't buried under the car stereo. Both effects are
+        // optional device capabilities — absent on plenty of hardware, and
+        // this one is a cheap Unisoc head unit, so treat them as a bonus
+        // rather than something to depend on.
+        val aec = runCatching {
+            if (android.media.audiofx.AcousticEchoCanceler.isAvailable())
+                android.media.audiofx.AcousticEchoCanceler.create(recorder.audioSessionId)
+                    ?.apply { enabled = true }
+            else null
+        }.getOrNull()
+        val ns = runCatching {
+            if (android.media.audiofx.NoiseSuppressor.isAvailable())
+                android.media.audiofx.NoiseSuppressor.create(recorder.audioSessionId)
+                    ?.apply { enabled = true }
+            else null
+        }.getOrNull()
+
         // Audio either side of a mic handover isn't contiguous, so carrying
         // the previous stretch's buffered frames across would analyse a
         // window that never actually occurred.
@@ -223,6 +241,8 @@ class WakeWordService : Service() {
                 }
             }
         } finally {
+            runCatching { aec?.release() }
+            runCatching { ns?.release() }
             runCatching { recorder.stop() }
             recorder.release()
         }

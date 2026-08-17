@@ -1007,6 +1007,65 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         speechRecognizer?.stopListening() // no-op if the fallback path wasn't the one running
     }
 
+    /**
+     * Held only while actively listening. Opening a media app is enough to
+     * leave the recognizer unable to start on this unit — asking for focus
+     * makes whoever holds it duck or pause, and makes this app the one the
+     * audio stack treats as current, rather than competing silently with a
+     * media app that never gave anything up.
+     */
+    private var audioFocusRequest: Any? = null
+
+    private fun requestVoiceAudioFocus() {
+        val app = getApplication<Application>()
+        val am = app.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 26) {
+                val req = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .build()
+                audioFocusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            }
+        }
+    }
+
+    private fun abandonVoiceAudioFocus() {
+        val app = getApplication<Application>()
+        val am = app.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 26) {
+                (audioFocusRequest as? android.media.AudioFocusRequest)?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(null)
+            }
+        }
+        audioFocusRequest = null
+    }
+
+    /** Maps SpeechRecognizer's error ints to something readable on the dashboard. */
+    private fun recognizerErrorName(error: Int): String = when (error) {
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network timeout"
+        SpeechRecognizer.ERROR_NETWORK -> "network"
+        SpeechRecognizer.ERROR_AUDIO -> "audio (mic unavailable)"
+        SpeechRecognizer.ERROR_SERVER -> "server"
+        SpeechRecognizer.ERROR_CLIENT -> "client"
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "no speech"
+        SpeechRecognizer.ERROR_NO_MATCH -> "no match"
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "recognizer busy"
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "no permission"
+        else -> "code $error"
+    }
+
     private fun startVoiceCommandFallback() {
         val app = getApplication<Application>()
         if (!SpeechRecognizer.isRecognitionAvailable(app)) {
@@ -1015,6 +1074,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             return
         }
         _voiceState.value = VoiceAssistantState.LISTENING
+        requestVoiceAudioFocus()
 
         speechRecognizer?.destroy()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(app).apply {
@@ -1025,10 +1085,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
                 override fun onError(error: Int) {
+                    abandonVoiceAudioFocus()
                     _voiceState.value = VoiceAssistantState.ERROR
                     speak("Didn't catch that.")
+                    // Set after speak(), which writes _voiceReply itself.
+                    // The specific error is the whole diagnosis for the
+                    // "no space to speak" failure — "audio (mic unavailable)"
+                    // and "recognizer busy" mean contention, "no speech"
+                    // means it listened and heard nothing. Shown on screen
+                    // because there's no logcat on this ROM.
+                    _voiceReply.value = "recognizer: ${recognizerErrorName(error)}"
                 }
                 override fun onResults(results: Bundle?) {
+                    abandonVoiceAudioFocus()
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                     if (text.isNullOrBlank()) {
                         _voiceState.value = VoiceAssistantState.ERROR
