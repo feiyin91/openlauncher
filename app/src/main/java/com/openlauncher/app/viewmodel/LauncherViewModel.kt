@@ -1184,6 +1184,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             currentThemeId  = settings.value.themeId,
             dayNightMode    = settings.value.dayNightMode.name,
             use24HourFormat = settings.value.use24HourFormat,
+            // The model has no clock, so "what time is it" was answered with
+            // "I don't have access to that" — true of the model, but odd
+            // coming from a dashboard displaying the time.
+            currentDateTime = java.text.SimpleDateFormat(
+                if (settings.value.use24HourFormat) "EEEE, d MMMM yyyy, HH:mm" else "EEEE, d MMMM yyyy, h:mm a",
+                Locale.getDefault()
+            ).format(java.util.Date()),
             weatherSummary  = w?.let {
                 "${it.temperatureDisplay(isMetric)}, feels ${it.feelsLikeDisplay(isMetric)}, ${it.conditionLabel.lowercase()}, wind ${it.windspeedDisplay(isMetric)}"
             },

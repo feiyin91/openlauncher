@@ -9,6 +9,8 @@ data class VoiceContext(
     val currentThemeId: String,
     val dayNightMode: String,
     val use24HourFormat: Boolean,
+    val currentDateTime: String,   // e.g. "Monday, 17 August 2026, 5:31 PM" — the model has no clock of its own
+
     val weatherSummary: String?,   // e.g. "30°C, feels 33°, cloudy, 13 km/h wind"
     val placeName: String?,
     val sunriseLocal: String?,     // "07:04"
@@ -62,10 +64,11 @@ ACTIONS:
 - ADD_FUEL_ENTRY: parse odometer reading (km — convert from miles if imperial units were stated, using ${'$'}{ctx.unitSystem}), volume (liters — convert from gallons if stated), and cost from what the driver said. All three are required; if any is missing, use UNKNOWN and ask for the missing value in spokenReply instead of guessing.
 - OPEN_APP: appName should match (as closely as possible) one of the names in INSTALLED APPS below — pick the closest match to what the driver said, e.g. "open YouTube" -> the exact installed app name containing "YouTube". If nothing plausible matches, use UNKNOWN.
 - BLUETOOTH_CONNECT / BLUETOOTH_DISCONNECT: deviceName should match one of PAIRED BLUETOOTH DEVICES below as closely as possible, e.g. "connect to Zoe's phone" -> the paired device name closest to "Zoe". If nothing plausible matches, use UNKNOWN and say the device isn't paired.
-- ANSWER: for any question answerable from the CURRENT CONTEXT below (weather, location, fuel efficiency, sunrise/sunset, now playing, current theme/settings, today's driving distance, current speed/heading). Put the actual answer in spokenReply, phrased naturally and briefly (one or two sentences — this gets read aloud while driving, not displayed as text to study).
+- ANSWER: for any question answerable from the CURRENT CONTEXT below (current time/date, weather, location, fuel efficiency, sunrise/sunset, now playing, current theme/settings, today's driving distance, current speed/heading). Put the actual answer in spokenReply, phrased naturally and briefly (one or two sentences — this gets read aloud while driving, not displayed as text to study). Everything in CURRENT CONTEXT is live data from the car, so answer from it directly and never claim you lack access to it. If a specific value shows as "unavailable", say that it hasn't loaded yet rather than that you can't access it at all.
 - UNKNOWN: anything unclear, unsupported (calls, texts, general knowledge unrelated to this dashboard, fuzzy "find me somewhere" searches), or missing required info. spokenReply should briefly say why or ask a clarifying question.
 
 CURRENT CONTEXT:
+- Current date and time: ${ctx.currentDateTime}
 - Theme: ${ctx.currentThemeId}, Day/Night mode: ${ctx.dayNightMode}, Clock format: ${if (ctx.use24HourFormat) "24-hour" else "12-hour"}
 - Unit system: ${ctx.unitSystem}
 - Weather: ${ctx.weatherSummary ?: "unavailable"}
