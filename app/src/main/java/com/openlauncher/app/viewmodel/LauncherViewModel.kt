@@ -961,10 +961,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val USE_GEMINI_LIVE = false
 
     fun startVoiceCommand() {
+        // Claim the slot before anything else. Coming back from another app
+        // can leave a second ViewModel instance collecting wake-word events,
+        // so one detection starts two parallel recognition sessions — which
+        // presented as an instant "didn't catch that" (the session that lost
+        // the race) immediately followed by the real answer. Both instances
+        // share this state via VoiceAssistantBridge, and both run on the main
+        // thread, so a plain check-then-set here is enough to let the first
+        // through and turn the second into a no-op.
+        if (_voiceState.value != VoiceAssistantState.IDLE) return
+        _voiceState.value = VoiceAssistantState.LISTENING
+
         ensureTts()
         _voiceTranscript.value = null
         _voiceReply.value = null
-        _voiceState.value = VoiceAssistantState.LISTENING
 
         if (!USE_GEMINI_LIVE || BuildConfig.GEMINI_API_KEY.isBlank()) {
             startVoiceCommandFallback()
@@ -1055,6 +1065,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** How many times to wait out a busy recognition service before giving up. */
     private val RECOGNIZER_BUSY_RETRIES = 3
 
+    /** Pending busy-retry, cancelled whenever a session ends so it can't fire into a later command. */
+    private var recognizerRetryJob: Job? = null
+
     /** Maps SpeechRecognizer's error ints to something readable on the dashboard. */
     private fun recognizerErrorName(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network timeout"
@@ -1100,7 +1113,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     // often enough to be worth the wait.
                     if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY && attempt < RECOGNIZER_BUSY_RETRIES) {
                         _voiceReply.value = "recognizer busy, retrying…"
-                        viewModelScope.launch {
+                        recognizerRetryJob?.cancel()
+                        recognizerRetryJob = viewModelScope.launch {
                             // Tearing down from inside a callback is what the
                             // docs warn against, so let this callback unwind
                             // before the retry rebuilds the recognizer.
@@ -1109,6 +1123,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         }
                         return
                     }
+                    recognizerRetryJob?.cancel()
                     abandonVoiceAudioFocus()
                     _voiceState.value = VoiceAssistantState.ERROR
                     speak("Didn't catch that.")
@@ -1121,6 +1136,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     _voiceReply.value = "recognizer: ${recognizerErrorName(error)}"
                 }
                 override fun onResults(results: Bundle?) {
+                    recognizerRetryJob?.cancel()
                     abandonVoiceAudioFocus()
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                     if (text.isNullOrBlank()) {
