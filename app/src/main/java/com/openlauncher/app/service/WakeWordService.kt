@@ -156,9 +156,29 @@ class WakeWordService : Service() {
             return false
         }
         val bufferSize = maxOf(minBuf, WakeWordEngine.CHUNK_SAMPLES * 4)
+
+        // VOICE_RECOGNITION deliberately hands over raw audio with device
+        // processing disabled, which is what we want in a quiet cabin and is
+        // what the model was trained against. But it also means no echo
+        // cancellation, so once the stereo is playing the wake word is buried
+        // under it — the score never moves at all. VOICE_COMMUNICATION is the
+        // source the platform actually attaches echo cancellation to, since
+        // it exists for exactly this problem: hearing the near end while the
+        // far end is playing. Only used while something is actually playing,
+        // to avoid its noise suppression and gain control colouring the audio
+        // the rest of the time.
+        val musicPlaying = runCatching {
+            (getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager)?.isMusicActive == true
+        }.getOrDefault(false)
+        val source = if (musicPlaying) {
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        } else {
+            MediaRecorder.AudioSource.VOICE_RECOGNITION
+        }
+
         val recorder = runCatching {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                source, SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
             )
         }.onFailure { VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord ctor failed: ${it.message}" }
@@ -189,6 +209,16 @@ class WakeWordService : Service() {
             else null
         }.getOrNull()
 
+        // Whether these actually attached is the difference between "echo
+        // cancellation didn't help" and "echo cancellation was never running",
+        // and the hardware decides — this is a budget head unit, so neither is
+        // guaranteed to exist.
+        val fx = buildString {
+            append(if (musicPlaying) "comm" else "recog")
+            append(if (aec != null) "+aec" else "-aec")
+            append(if (ns != null) "+ns" else "-ns")
+        }
+
         // Audio either side of a mic handover isn't contiguous, so carrying
         // the previous stretch's buffered frames across would analyse a
         // window that never actually occurred.
@@ -205,6 +235,18 @@ class WakeWordService : Service() {
         try {
             while (currentCoroutineContext().isActive) {
                 if (VoiceAssistantBridge.voiceState.value != LauncherViewModel.VoiceAssistantState.IDLE) return false
+
+                // The audio source is fixed when the stream opens, so music
+                // starting or stopping mid-session has to reopen it with the
+                // other source. Checked about once a second rather than per
+                // chunk — it crosses into the audio service.
+                if (chunkCount % 12L == 0L) {
+                    val nowPlaying = runCatching {
+                        (getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager)?.isMusicActive == true
+                    }.getOrDefault(musicPlaying)
+                    if (nowPlaying != musicPlaying) return false
+                }
+
                 val read = recorder.read(chunk, 0, chunk.size)
                 if (read != chunk.size) {
                     VoiceAssistantBridge.wakeWordDebug.value = "short read: $read/${chunk.size}"
@@ -233,7 +275,7 @@ class WakeWordService : Service() {
                 }
                 peakScore = maxOf(peakScore, score)
                 VoiceAssistantBridge.wakeWordDebug.value =
-                    "score:%.3f peak5s:%.3f mic:%d (fires at %.2f)".format(score, peakScore, rms, DETECTION_THRESHOLD)
+                    "score:%.3f peak5s:%.3f mic:%d %s".format(score, peakScore, rms, fx)
                 val now = System.currentTimeMillis()
                 if (score >= DETECTION_THRESHOLD && now - lastTriggerMs > COOLDOWN_MS) {
                     lastTriggerMs = now
