@@ -196,8 +196,7 @@ fun HomeScreen(
     var widgetLibraryOpen by remember { mutableStateOf(false) }
     var presetPickerOpen by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
 
         // ── Header ──────────────────────────────────────────────────────────
         Row(
@@ -329,10 +328,17 @@ fun HomeScreen(
 
         HorizontalDivider(color = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF141414))
 
-        // ── Widget Grid ─────────────────────────────────────────────────────
+        // ── Widget Grid + control rail ────────────────────────────────────────
+        // The rail is a dedicated column the grid never lays widgets into —
+        // not a floating overlay on top of it. A fully-packed layout (e.g. the
+        // Split Panel preset) runs edge to edge, so anything floated on top
+        // WILL eventually sit over live content; reserving real space is the
+        // only placement that's correct for every layout, not just today's.
+        Row(modifier = Modifier.fillMaxSize()) {
         BoxWithConstraints(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxHeight()
                 .padding(gap)
         ) {
             val cellW = (maxWidth  - gap * (GRID_COLS - 1)) / GRID_COLS
@@ -651,38 +657,29 @@ fun HomeScreen(
                 }
             }
         }
-    }
 
-    // ── Voice assistant — large floating trigger ─────────────────────────────
-    // The dependable path when the wake word can't be heard (loudest failure
-    // mode: driving with music on — see WakeWordService). Bottom-RIGHT: the
-    // driver sits on the right in this vehicle, and this unit's own physical
-    // buttons running down its left bezel are already a reach for them — put
-    // this on the far side of that problem, not the same side as it.
-    VoiceFab(
-        voiceState = voiceState,
-        accent = accent,
-        onStart = onStartVoiceCommand,
-        onStop = onStopVoiceCommand,
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(end = 20.dp, bottom = 20.dp)
-    )
-
-    // ── Volume rocker ─────────────────────────────────────────────────────────
-    // Same reach problem, same fix: the unit's physical rocker is on the far
-    // left bezel, so this mirrors it on-screen on the driver's side instead.
-    // Vertically centered on the right edge so it doesn't compete with the
-    // voice button's corner.
-    VolumeRocker(
-        level = volumeLevel,
-        accent = accent,
-        onUp = onVolumeUp,
-        onDown = onVolumeDown,
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .padding(end = 20.dp)
-    )
+        // ── Control rail ─────────────────────────────────────────────────────
+        // Dedicated space the grid excludes from its own layout math, not an
+        // overlay — see the comment above where this Row starts. Voice
+        // (bottom) is the fallback for when the wake word can't be heard,
+        // loudest case: music playing (see WakeWordService). Volume (top)
+        // mirrors this unit's physical rocker, which runs down the far-LEFT
+        // bezel — a real reach problem for a driver on the right, not a
+        // preference.
+        ControlRail(
+            voiceState = voiceState,
+            accent = accent,
+            volumeLevel = volumeLevel,
+            onStartVoiceCommand = onStartVoiceCommand,
+            onStopVoiceCommand = onStopVoiceCommand,
+            onVolumeUp = onVolumeUp,
+            onVolumeDown = onVolumeDown,
+            modifier = Modifier
+                .width(84.dp)
+                .fillMaxHeight()
+                .padding(vertical = gap, horizontal = 6.dp)
+        )
+        }
     }
 
     // ── Widget context menu (long-press any cell) ────────────────────────────
@@ -762,8 +759,47 @@ fun HomeScreen(
 }
 
 /**
- * Large always-reachable voice trigger — the manual fallback for when the
- * "Hi Sebastian" wake word can't be heard, which in practice means whenever
+ * Vertical control rail — voice and volume — occupying real, reserved space
+ * beside the widget grid rather than floating on top of it. A floating
+ * overlay looked fine against a sparse layout but sat directly over the
+ * weather/clock panel once the grid was actually packed (Split Panel preset
+ * runs edge to edge); reserving space is the only placement guaranteed not
+ * to cover live content regardless of which layout is active.
+ */
+@Composable
+private fun ControlRail(
+    voiceState: com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState,
+    accent: Color,
+    volumeLevel: Float,
+    onStartVoiceCommand: () -> Unit,
+    onStopVoiceCommand: () -> Unit,
+    onVolumeUp: () -> Unit,
+    onVolumeDown: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        VolumeRocker(
+            level  = volumeLevel,
+            accent = accent,
+            onUp   = onVolumeUp,
+            onDown = onVolumeDown
+        )
+        Spacer(Modifier.weight(1f))
+        VoiceFab(
+            voiceState = voiceState,
+            accent     = accent,
+            onStart    = onStartVoiceCommand,
+            onStop     = onStopVoiceCommand
+        )
+    }
+}
+
+/**
+ * The voice trigger itself — the manual fallback for when the "Hey
+ * Sebastian" wake word can't be heard, which in practice means whenever
  * music is playing (this unit has no acoustic echo cancellation hardware, so
  * that's not something on-device tuning can fully solve). Used to be a 28dp
  * icon in the header; that's not a realistic target to hit by feel while
@@ -783,10 +819,10 @@ private fun VoiceFab(
         if (listening || voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR)
             Color(0xFFE05252) else accent
 
-    LargeFloatingActionButton(
+    FloatingActionButton(
         onClick = { if (enabled) { if (listening) onStop() else onStart() } },
         modifier = modifier
-            .size(72.dp)
+            .size(64.dp)
             .alpha(if (enabled) 1f else 0.5f),
         shape = CircleShape,
         containerColor = fillColor,
@@ -796,7 +832,7 @@ private fun VoiceFab(
         Icon(
             imageVector        = if (listening) Icons.Default.Stop else Icons.Default.Mic,
             contentDescription = "Voice assistant",
-            modifier           = Modifier.size(32.dp)
+            modifier           = Modifier.size(30.dp)
         )
     }
 }
