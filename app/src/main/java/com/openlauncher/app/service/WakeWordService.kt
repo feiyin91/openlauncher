@@ -57,6 +57,9 @@ class WakeWordService : Service() {
         // Guards against re-triggering off the tail end of the same
         // utterance still sitting in the sliding window right after a hit.
         private const val COOLDOWN_MS = 3000L
+        // Grace period between releasing the mic and telling anyone the wake
+        // word fired, so the recognizer that starts next finds it free.
+        private const val MIC_HANDOVER_SETTLE_MS = 400L
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + Job())
@@ -99,6 +102,13 @@ class WakeWordService : Service() {
                 delay(400)
                 val detected = captureSession(engine)
                 if (detected) {
+                    // AudioRecord.release() returning does not mean the input
+                    // device is free yet — the audio HAL tears the session
+                    // down asynchronously. Handing over immediately left
+                    // SpeechRecognizer erroring out on a still-busy mic the
+                    // instant it started, which surfaced as "didn't catch
+                    // that" before the driver had a chance to say anything.
+                    delay(MIC_HANDOVER_SETTLE_MS)
                     // Emitted only after captureSession has returned, i.e.
                     // after its finally block released the mic — the ViewModel
                     // starts SpeechRecognizer the instant it sees this, so
@@ -183,11 +193,20 @@ class WakeWordService : Service() {
                     continue
                 }
                 chunkCount++
+                // Raw input level, reported alongside the score purely to
+                // tell two very different failures apart: a mic that has
+                // been silenced or handed to another app reads ~0 here while
+                // the score sits flat, whereas a mic that is working but
+                // swamped by music reads high with the score still low.
+                var sumSq = 0.0
+                for (s in chunk) sumSq += s.toDouble() * s.toDouble()
+                val rms = kotlin.math.sqrt(sumSq / chunk.size).toInt()
+
                 val score = runCatching { engine.processChunk(chunk) }
                     .onFailure { VoiceAssistantBridge.wakeWordDebug.value = "inference error: ${it.message}" }
                     .getOrNull()
                 if (score == null) {
-                    VoiceAssistantBridge.wakeWordDebug.value = "chunks:$chunkCount warming up…"
+                    VoiceAssistantBridge.wakeWordDebug.value = "warming up… mic:$rms"
                     continue
                 }
                 if (chunkCount - peakWindowStart >= 62) { // ~5s at 80ms/chunk
@@ -196,7 +215,7 @@ class WakeWordService : Service() {
                 }
                 peakScore = maxOf(peakScore, score)
                 VoiceAssistantBridge.wakeWordDebug.value =
-                    "score:%.3f peak5s:%.3f (fires at %.2f)".format(score, peakScore, DETECTION_THRESHOLD)
+                    "score:%.3f peak5s:%.3f mic:%d (fires at %.2f)".format(score, peakScore, rms, DETECTION_THRESHOLD)
                 val now = System.currentTimeMillis()
                 if (score >= DETECTION_THRESHOLD && now - lastTriggerMs > COOLDOWN_MS) {
                     lastTriggerMs = now
