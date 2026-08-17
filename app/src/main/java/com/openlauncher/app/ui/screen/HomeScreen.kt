@@ -30,6 +30,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -669,15 +670,17 @@ fun HomeScreen(
         ControlRail(
             voiceState = voiceState,
             accent = accent,
+            widgetBg = widgetBg,
+            widgetBorder = widgetBorder,
             volumeLevel = volumeLevel,
             onStartVoiceCommand = onStartVoiceCommand,
             onStopVoiceCommand = onStopVoiceCommand,
             onVolumeUp = onVolumeUp,
             onVolumeDown = onVolumeDown,
             modifier = Modifier
-                .width(84.dp)
+                .width(60.dp)
                 .fillMaxHeight()
-                .padding(vertical = gap, horizontal = 6.dp)
+                .padding(vertical = gap, horizontal = 4.dp)
         )
         }
     }
@@ -770,6 +773,8 @@ fun HomeScreen(
 private fun ControlRail(
     voiceState: com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState,
     accent: Color,
+    widgetBg: Color,
+    widgetBorder: Color,
     volumeLevel: Float,
     onStartVoiceCommand: () -> Unit,
     onStopVoiceCommand: () -> Unit,
@@ -777,113 +782,83 @@ private fun ControlRail(
     onVolumeDown: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val listening = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING
+    val voiceEnabled = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE || listening
+    val voiceActive = listening || voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR
+
     Column(
         modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        VolumeRocker(
-            level  = volumeLevel,
-            accent = accent,
-            onUp   = onVolumeUp,
-            onDown = onVolumeDown
-        )
-        Spacer(Modifier.weight(1f))
-        VoiceFab(
-            voiceState = voiceState,
-            accent     = accent,
-            onStart    = onStartVoiceCommand,
-            onStop     = onStopVoiceCommand
-        )
-    }
-}
-
-/**
- * The voice trigger itself — the manual fallback for when the "Hey
- * Sebastian" wake word can't be heard, which in practice means whenever
- * music is playing (this unit has no acoustic echo cancellation hardware, so
- * that's not something on-device tuning can fully solve). Used to be a 28dp
- * icon in the header; that's not a realistic target to hit by feel while
- * driving, which is the whole point of this button existing.
- */
-@Composable
-private fun VoiceFab(
-    voiceState: com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState,
-    accent: Color,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val listening = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING
-    val enabled = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE || listening
-    val fillColor =
-        if (listening || voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR)
-            Color(0xFFE05252) else accent
-
-    FloatingActionButton(
-        onClick = { if (enabled) { if (listening) onStop() else onStart() } },
-        modifier = modifier
-            .size(64.dp)
-            .alpha(if (enabled) 1f else 0.5f),
-        shape = CircleShape,
-        containerColor = fillColor,
-        contentColor = onAccentColor(fillColor),
-        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp, pressedElevation = 8.dp)
-    ) {
-        Icon(
-            imageVector        = if (listening) Icons.Default.Stop else Icons.Default.Mic,
-            contentDescription = "Voice assistant",
-            modifier           = Modifier.size(30.dp)
-        )
-    }
-}
-
-/**
- * On-screen mirror of the unit's physical volume rocker, which sits on the
- * far-left bezel — a real reach problem for a driver on the right, not
- * something solved by just knowing the hardware button is there.
- */
-@Composable
-private fun VolumeRocker(
-    level: Float,
-    accent: Color,
-    onUp: () -> Unit,
-    onDown: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(accent.copy(alpha = 0.12f))
-            .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        FloatingActionButton(
-            onClick        = onUp,
-            modifier       = Modifier.size(56.dp),
-            shape          = CircleShape,
-            containerColor = accent,
-            contentColor   = onAccentColor(accent),
-            elevation      = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp, pressedElevation = 6.dp)
-        ) {
-            Icon(Icons.Default.VolumeUp, contentDescription = "Volume up", modifier = Modifier.size(26.dp))
+        RailTile(size = 40.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onVolumeUp) {
+            Icon(Icons.Default.VolumeUp, contentDescription = "Volume up", tint = accent, modifier = Modifier.size(18.dp))
         }
         Text(
-            text       = "${(level * 100).roundToInt()}%",
+            text       = "${(volumeLevel * 100).roundToInt()}%",
             color      = accent,
-            fontSize   = 11.sp,
+            fontSize   = 10.sp,
             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
         )
-        FloatingActionButton(
-            onClick        = onDown,
-            modifier       = Modifier.size(56.dp),
-            shape          = CircleShape,
-            containerColor = accent,
-            contentColor   = onAccentColor(accent),
-            elevation      = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp, pressedElevation = 6.dp)
-        ) {
-            Icon(Icons.Default.VolumeDown, contentDescription = "Volume down", modifier = Modifier.size(26.dp))
+        RailTile(size = 40.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onVolumeDown) {
+            Icon(Icons.Default.VolumeDown, contentDescription = "Volume down", tint = accent, modifier = Modifier.size(18.dp))
         }
+
+        Spacer(Modifier.weight(1f))
+
+        // Bigger than the volume tiles — this is the primary fallback
+        // control, not a secondary one — and tinted red while listening or
+        // on error, same language as the rest of the voice UI elsewhere.
+        RailTile(
+            size = 52.dp,
+            accent = if (voiceActive) Color(0xFFE05252) else accent,
+            widgetBg = widgetBg,
+            widgetBorder = if (voiceActive) Color(0xFFE05252).copy(alpha = 0.6f) else widgetBorder,
+            enabled = voiceEnabled,
+            onClick = { if (listening) onStopVoiceCommand() else onStartVoiceCommand() }
+        ) {
+            Icon(
+                imageVector        = if (listening) Icons.Default.Stop else Icons.Default.Mic,
+                contentDescription = "Voice assistant",
+                tint               = if (voiceActive) Color(0xFFE05252) else accent,
+                modifier           = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+/**
+ * One flat control tile — same visual language as every widget card
+ * (widgetBg fill, widgetBorder stroke, sharp WIDGET_RADIUS corners, no
+ * elevation/shadow) rather than a Material filled circular FAB, which read
+ * as a foreign UI-kit element glued on top of this dashboard's HUD look.
+ */
+@Composable
+private fun RailTile(
+    size: Dp,
+    accent: Color,
+    widgetBg: Color,
+    widgetBorder: Color,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .alpha(if (enabled) 1f else 0.4f)
+            .clip(WIDGET_RADIUS)
+            .background(widgetBg)
+            .border(1.dp, widgetBorder, WIDGET_RADIUS)
+            .clickable(
+                enabled           = enabled,
+                indication        = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick           = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
     }
 }
 
