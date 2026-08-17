@@ -168,6 +168,18 @@ class WakeWordEngine(context: Context) {
         else -> FloatArray(0)
     }
 
+    /**
+     * Clears all buffered audio context. Call when the mic is reclaimed after
+     * a voice command — the frames either side of that gap aren't contiguous,
+     * and a 76-frame window spanning the seam would be analysing audio that
+     * never actually occurred back to back.
+     */
+    fun reset() {
+        melFrames.clear()
+        embeddings.clear()
+        melContext = FloatArray(MEL_CONTEXT_SAMPLES)
+    }
+
     fun close() {
         runCatching { melSession.close() }
         runCatching { embSession.close() }

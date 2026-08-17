@@ -20,6 +20,7 @@ import com.openlauncher.app.viewmodel.LauncherViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -83,73 +84,130 @@ class WakeWordService : Service() {
         listenJob?.cancel()
         listenJob = scope.launch {
             val engine = engine ?: return@launch
-            val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            if (minBuf <= 0) {
-                VoiceAssistantBridge.wakeWordDebug.value = "getMinBufferSize failed"
-                return@launch
-            }
-            val bufferSize = maxOf(minBuf, WakeWordEngine.CHUNK_SAMPLES * 4)
-            val recorder = runCatching {
-                AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
-                )
-            }.onFailure { VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord ctor failed: ${it.message}" }
-                .getOrNull() ?: return@launch
-            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-                VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord not initialized (state=${recorder.state})"
-                recorder.release()
-                return@launch
-            }
-
-            val chunk = ShortArray(WakeWordEngine.CHUNK_SAMPLES)
-            recorder.startRecording()
-            var chunkCount = 0L
-            // Peak over a rolling ~5s window rather than since startup, so
-            // the readout reflects the attempt just made instead of being
-            // pinned high forever by one loud noise earlier in the drive.
-            var peakScore = 0f
-            var peakWindowStart = 0L
-            try {
-                while (isActive) {
-                    // Don't fight SpeechRecognizer for the mic once a voice
-                    // command is already underway — release the device by
-                    // just not reading from it until back to IDLE.
-                    if (VoiceAssistantBridge.voiceState.value != LauncherViewModel.VoiceAssistantState.IDLE) {
-                        delay(500)
-                        continue
-                    }
-                    val read = recorder.read(chunk, 0, chunk.size)
-                    if (read != chunk.size) {
-                        VoiceAssistantBridge.wakeWordDebug.value = "short read: $read/${chunk.size}"
-                        continue
-                    }
-                    chunkCount++
-                    val score = runCatching { engine.processChunk(chunk) }
-                        .onFailure { VoiceAssistantBridge.wakeWordDebug.value = "inference error: ${it.message}" }
-                        .getOrNull()
-                    if (score == null) {
-                        VoiceAssistantBridge.wakeWordDebug.value = "chunks:$chunkCount warming up…"
-                        continue
-                    }
-                    if (chunkCount - peakWindowStart >= 62) { // ~5s at 80ms/chunk
-                        peakWindowStart = chunkCount
-                        peakScore = 0f
-                    }
-                    peakScore = maxOf(peakScore, score)
-                    VoiceAssistantBridge.wakeWordDebug.value =
-                        "score:%.3f peak5s:%.3f (fires at %.2f)".format(score, peakScore, DETECTION_THRESHOLD)
-                    val now = System.currentTimeMillis()
-                    if (score >= DETECTION_THRESHOLD && now - lastTriggerMs > COOLDOWN_MS) {
-                        lastTriggerMs = now
-                        VoiceAssistantBridge.wakeWordDetected.tryEmit(Unit)
+            while (isActive) {
+                // Hold off entirely while a voice command is running — the
+                // mic must be genuinely free, not just unread (see
+                // captureSession).
+                while (isActive && VoiceAssistantBridge.voiceState.value != LauncherViewModel.VoiceAssistantState.IDLE) {
+                    VoiceAssistantBridge.wakeWordDebug.value = "paused — voice command active"
+                    delay(300)
+                }
+                if (!isActive) break
+                // Let the recognizer's own capture stream finish tearing down
+                // before claiming the input device again; grabbing it in the
+                // same breath tends to hand back a silenced stream.
+                delay(400)
+                val detected = captureSession(engine)
+                if (detected) {
+                    // Emitted only after captureSession has returned, i.e.
+                    // after its finally block released the mic — the ViewModel
+                    // starts SpeechRecognizer the instant it sees this, so
+                    // emitting while still holding the device is precisely the
+                    // race that made every wake-word-triggered command fail
+                    // with "didn't catch that".
+                    VoiceAssistantBridge.wakeWordDetected.tryEmit(Unit)
+                    VoiceAssistantBridge.wakeWordDebug.value = "detected — handing over mic"
+                    // Wait for the handover to actually register before the
+                    // loop comes back around, otherwise the pause check above
+                    // still sees IDLE and we immediately reclaim the mic out
+                    // from under the recognizer we just triggered. Bounded so
+                    // a dropped/ignored event can't wedge listening forever.
+                    var waited = 0
+                    while (isActive && waited < 2000 &&
+                        VoiceAssistantBridge.voiceState.value == LauncherViewModel.VoiceAssistantState.IDLE
+                    ) {
+                        delay(100)
+                        waited += 100
                     }
                 }
-            } finally {
-                runCatching { recorder.stop() }
-                recorder.release()
             }
         }
+    }
+
+    /**
+     * Owns the mic for one continuous listening stretch: opens AudioRecord,
+     * runs inference until either the wake word fires or a voice command
+     * starts elsewhere, then always releases the device on the way out.
+     *
+     * The recorder is deliberately created and destroyed per stretch rather
+     * than once for the service's lifetime. Android hands input to one client
+     * at a time, and after SpeechRecognizer takes over, a long-lived
+     * AudioRecord keeps returning full-length reads of silence rather than
+     * failing — which looks exactly like a working pipeline scoring zero, and
+     * is why detection went permanently dead after the first voice command.
+     *
+     * @return true if the wake word was detected (caller emits once the mic is free).
+     */
+    private suspend fun captureSession(engine: WakeWordEngine): Boolean {
+        val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        if (minBuf <= 0) {
+            VoiceAssistantBridge.wakeWordDebug.value = "getMinBufferSize failed"
+            delay(1000)
+            return false
+        }
+        val bufferSize = maxOf(minBuf, WakeWordEngine.CHUNK_SAMPLES * 4)
+        val recorder = runCatching {
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize
+            )
+        }.onFailure { VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord ctor failed: ${it.message}" }
+            .getOrNull() ?: run { delay(1000); return false }
+
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            VoiceAssistantBridge.wakeWordDebug.value = "AudioRecord not initialized (state=${recorder.state})"
+            recorder.release()
+            delay(1000)
+            return false
+        }
+
+        // Audio either side of a mic handover isn't contiguous, so carrying
+        // the previous stretch's buffered frames across would analyse a
+        // window that never actually occurred.
+        engine.reset()
+
+        val chunk = ShortArray(WakeWordEngine.CHUNK_SAMPLES)
+        var chunkCount = 0L
+        // Peak over a rolling ~5s window rather than since startup, so the
+        // readout reflects the attempt just made instead of being pinned high
+        // forever by one loud noise earlier in the drive.
+        var peakScore = 0f
+        var peakWindowStart = 0L
+        recorder.startRecording()
+        try {
+            while (currentCoroutineContext().isActive) {
+                if (VoiceAssistantBridge.voiceState.value != LauncherViewModel.VoiceAssistantState.IDLE) return false
+                val read = recorder.read(chunk, 0, chunk.size)
+                if (read != chunk.size) {
+                    VoiceAssistantBridge.wakeWordDebug.value = "short read: $read/${chunk.size}"
+                    continue
+                }
+                chunkCount++
+                val score = runCatching { engine.processChunk(chunk) }
+                    .onFailure { VoiceAssistantBridge.wakeWordDebug.value = "inference error: ${it.message}" }
+                    .getOrNull()
+                if (score == null) {
+                    VoiceAssistantBridge.wakeWordDebug.value = "chunks:$chunkCount warming up…"
+                    continue
+                }
+                if (chunkCount - peakWindowStart >= 62) { // ~5s at 80ms/chunk
+                    peakWindowStart = chunkCount
+                    peakScore = 0f
+                }
+                peakScore = maxOf(peakScore, score)
+                VoiceAssistantBridge.wakeWordDebug.value =
+                    "score:%.3f peak5s:%.3f (fires at %.2f)".format(score, peakScore, DETECTION_THRESHOLD)
+                val now = System.currentTimeMillis()
+                if (score >= DETECTION_THRESHOLD && now - lastTriggerMs > COOLDOWN_MS) {
+                    lastTriggerMs = now
+                    return true
+                }
+            }
+        } finally {
+            runCatching { recorder.stop() }
+            recorder.release()
+        }
+        return false
     }
 
     private fun createNotificationChannel() {
