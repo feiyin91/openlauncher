@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 import com.openlauncher.app.data.AppSettings
@@ -154,6 +155,13 @@ fun HomeScreen(
     volumeLevel: Float = 0f,
     onVolumeUp: () -> Unit = {},
     onVolumeDown: () -> Unit = {},
+    onOpenWifiPanel: () -> Unit = {},
+    onRequestBluetoothPanel: () -> Unit = {}, // checks/requests BLUETOOTH_CONNECT, then opens bluetoothPanelOpen below
+    bluetoothPanelOpen: Boolean = false,
+    onDismissBluetoothPanel: () -> Unit = {},
+    pairedBluetoothDeviceNames: () -> List<String> = { emptyList() },
+    onConnectBluetoothDevice: (String) -> Unit = {},
+    onDisconnectBluetoothDevice: (String) -> Unit = {},
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -661,12 +669,14 @@ fun HomeScreen(
 
         // ── Control rail ─────────────────────────────────────────────────────
         // Dedicated space the grid excludes from its own layout math, not an
-        // overlay — see the comment above where this Row starts. Voice
-        // (bottom) is the fallback for when the wake word can't be heard,
-        // loudest case: music playing (see WakeWordService). Volume (top)
-        // mirrors this unit's physical rocker, which runs down the far-LEFT
-        // bezel — a real reach problem for a driver on the right, not a
-        // preference.
+        // overlay — see the comment above where this Row starts. Bottom to
+        // top: voice (the fallback for when the wake word can't be heard —
+        // loudest case: music playing, see WakeWordService), volume down/up
+        // (mirrors the physical rocker on the far-LEFT bezel — a real reach
+        // problem for a driver on the right, not a preference), Bluetooth,
+        // WiFi. Same reach logic moved these out of the Clock widget's
+        // corner, which only had room for them at 18dp — too small to hit
+        // reliably while driving, same complaint voice/volume already had.
         ControlRail(
             voiceState = voiceState,
             accent = accent,
@@ -677,6 +687,8 @@ fun HomeScreen(
             onStopVoiceCommand = onStopVoiceCommand,
             onVolumeUp = onVolumeUp,
             onVolumeDown = onVolumeDown,
+            onOpenWifiPanel = onOpenWifiPanel,
+            onOpenBluetoothPanel = onRequestBluetoothPanel,
             modifier = Modifier
                 .width(60.dp)
                 .fillMaxHeight()
@@ -759,6 +771,22 @@ fun HomeScreen(
             onDismiss = { presetPickerOpen = false }
         )
     }
+
+    // ── Bluetooth panel ───────────────────────────────────────────────────────
+    // Curated in-app equivalent of Settings.Panel.ACTION_WIFI (which Android
+    // ships and WiFi already uses) — no Bluetooth equivalent exists in the
+    // public API, so tapping Bluetooth used to jump all the way out to the
+    // system Settings app. This stays inside OpenLauncher instead.
+    if (bluetoothPanelOpen) {
+        BluetoothPanel(
+            accent      = accent,
+            isDayMode   = isDayMode,
+            devices     = remember(bluetoothPanelOpen) { pairedBluetoothDeviceNames() },
+            onConnect   = onConnectBluetoothDevice,
+            onDisconnect = onDisconnectBluetoothDevice,
+            onDismiss   = onDismissBluetoothPanel
+        )
+    }
 }
 
 /**
@@ -780,17 +808,50 @@ private fun ControlRail(
     onStopVoiceCommand: () -> Unit,
     onVolumeUp: () -> Unit,
     onVolumeDown: () -> Unit,
+    onOpenWifiPanel: () -> Unit,
+    onOpenBluetoothPanel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listening = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING
     val voiceEnabled = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.IDLE || listening
     val voiceActive = listening || voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.ERROR
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wifiManager = remember {
+        context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+    }
+    val btAdapter = remember {
+        (context.applicationContext.getSystemService(android.content.Context.BLUETOOTH_SERVICE)
+            as? android.bluetooth.BluetoothManager)?.adapter
+    }
+    var wifiOn by remember { mutableStateOf(wifiManager?.isWifiEnabled == true) }
+    var btOn by remember { mutableStateOf(btAdapter?.isEnabled == true) }
+    // Same 2s poll the Clock widget's own WiFi/Bluetooth icons used — no
+    // broadcast exists for "radio enabled" that's worth registering a
+    // receiver for just to save a cheap poll.
+    LaunchedEffect(Unit) {
+        while (true) {
+            wifiOn = wifiManager?.isWifiEnabled == true
+            btOn = btAdapter?.isEnabled == true
+            kotlinx.coroutines.delay(2000)
+        }
+    }
+    val inactiveTint = accent.copy(alpha = 0.35f)
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        RailTile(size = 36.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onOpenWifiPanel) {
+            Icon(Icons.Default.Wifi, contentDescription = "WiFi", tint = if (wifiOn) accent else inactiveTint, modifier = Modifier.size(17.dp))
+        }
+        RailTile(size = 36.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onOpenBluetoothPanel) {
+            Icon(Icons.Default.Bluetooth, contentDescription = "Bluetooth", tint = if (btOn) accent else inactiveTint, modifier = Modifier.size(17.dp))
+        }
+
+        Spacer(Modifier.height(2.dp))
+
         RailTile(size = 40.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onVolumeUp) {
             Icon(Icons.Default.VolumeUp, contentDescription = "Volume up", tint = accent, modifier = Modifier.size(18.dp))
         }
@@ -859,6 +920,126 @@ private fun RailTile(
         contentAlignment = Alignment.Center
     ) {
         content()
+    }
+}
+
+/**
+ * Curated Bluetooth panel — Android ships Settings.Panel.ACTION_WIFI, a
+ * bottom-sheet-style panel that stays inside the calling app, but never
+ * shipped an equivalent for Bluetooth. Without this, tapping Bluetooth meant
+ * leaving OpenLauncher entirely for the system Settings app. Lists paired
+ * devices with direct connect/disconnect (see LauncherViewModel's
+ * setBluetoothDeviceConnected — the same reflection-based A2DP proxy call
+ * "connect to Zoe's phone" already uses by voice).
+ */
+@Composable
+private fun BluetoothPanel(
+    accent: Color,
+    isDayMode: Boolean,
+    devices: List<String>,
+    onConnect: (String) -> Unit,
+    onDisconnect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val panelBg     = if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF0E0E0E)
+    val panelBorder = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF1A1A1A)
+    val labelColor  = if (isDayMode) Color(0xFF111111) else Color(0xFFEFEFEF)
+    val subtleColor = if (isDayMode) Color(0xFF888888) else Color(0xFF666666)
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    indication        = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick           = onDismiss
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {} // swallow taps so they don't fall through to the scrim
+                    .background(panelBg)
+                    .border(1.dp, panelBorder)
+                    .padding(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text          = "BLUETOOTH",
+                        color         = labelColor,
+                        letterSpacing = 2.sp,
+                        fontSize      = 14.sp
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Icon(
+                        Icons.Default.Close, contentDescription = "Close", tint = subtleColor,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable(
+                                indication        = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick           = onDismiss
+                            )
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                if (devices.isEmpty()) {
+                    Text(
+                        text     = "No paired devices. Pair one from system Bluetooth settings first.",
+                        color    = subtleColor,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    devices.forEach { name ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text     = name,
+                                color    = labelColor,
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text     = "CONNECT",
+                                color    = accent,
+                                fontSize = 11.sp,
+                                letterSpacing = 1.sp,
+                                modifier = Modifier
+                                    .clickable(
+                                        indication        = null,
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        onClick           = { onConnect(name) }
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                            Text(
+                                text     = "DISCONNECT",
+                                color    = subtleColor,
+                                fontSize = 11.sp,
+                                letterSpacing = 1.sp,
+                                modifier = Modifier
+                                    .clickable(
+                                        indication        = null,
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        onClick           = { onDisconnect(name) }
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                        HorizontalDivider(color = panelBorder)
+                    }
+                }
+            }
+        }
     }
 }
 

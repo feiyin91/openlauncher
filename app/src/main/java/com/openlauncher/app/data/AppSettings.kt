@@ -144,7 +144,9 @@ data class AppSettings(
     val showRainChance: Boolean = true,
     // Clock panel enrichment
     val showSunriseSunset: Boolean = true,
-    val showQuickTogglesInClock: Boolean = true,
+    // Default flipped off now that the control rail covers WiFi/Bluetooth —
+    // still toggleable in Settings for anyone who wants both.
+    val showQuickTogglesInClock: Boolean = false,
     // Now Playing panel enrichment
     val showNowPlayingSourceBadge: Boolean = true,
     val use24HourFormat: Boolean = true,

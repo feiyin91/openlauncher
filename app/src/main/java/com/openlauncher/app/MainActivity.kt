@@ -154,6 +154,33 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            var bluetoothPanelOpen by remember { mutableStateOf(false) }
+            val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted -> if (granted) bluetoothPanelOpen = true }
+            val onRequestBluetoothPanel: () -> Unit = {
+                val granted = android.os.Build.VERSION.SDK_INT < 31 ||
+                    ContextCompat.checkSelfPermission(micContext, Manifest.permission.BLUETOOTH_CONNECT) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    bluetoothPanelOpen = true
+                } else {
+                    bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                }
+            }
+            // Settings.Panel.ACTION_WIFI is the system's own bottom-sheet-style
+            // panel — stays inside OpenLauncher rather than switching apps,
+            // same reason the Clock widget's WiFi icon used it. Bluetooth has
+            // no equivalent (see BluetoothPanel), which is why that one needed
+            // a curated screen instead of just launching a system intent.
+            val onOpenWifiPanel: () -> Unit = {
+                runCatching {
+                    startActivity(Intent(android.provider.Settings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    runCatching { startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+            }
+
             // A preset themeId overrides the manually-picked accent/background/font
             // colors below; "custom" (or an unrecognized id) falls through to those.
             val resolvedTheme  = com.openlauncher.app.data.resolveDashboardTheme(settings.themeId, isDayMode)
@@ -329,7 +356,14 @@ class MainActivity : ComponentActivity() {
                                         wakeWordDebug         = wakeWordDebug,
                                         volumeLevel           = volumeLevel,
                                         onVolumeUp            = { vm.bumpVolume(up = true) },
-                                        onVolumeDown          = { vm.bumpVolume(up = false) }
+                                        onVolumeDown          = { vm.bumpVolume(up = false) },
+                                        onOpenWifiPanel          = onOpenWifiPanel,
+                                        onRequestBluetoothPanel  = onRequestBluetoothPanel,
+                                        bluetoothPanelOpen       = bluetoothPanelOpen,
+                                        onDismissBluetoothPanel  = { bluetoothPanelOpen = false },
+                                        pairedBluetoothDeviceNames = { vm.pairedBluetoothDeviceNames() },
+                                        onConnectBluetoothDevice  = { name -> vm.setBluetoothDeviceConnected(name, true) },
+                                        onDisconnectBluetoothDevice = { name -> vm.setBluetoothDeviceConnected(name, false) }
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(

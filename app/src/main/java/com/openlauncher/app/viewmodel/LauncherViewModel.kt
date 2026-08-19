@@ -9,6 +9,7 @@ import android.database.ContentObserver
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -803,6 +804,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    // refreshConnectivity() alone only ever ran once at init and again on
+    // onResume() — fine for "roughly right after switching apps," but the
+    // header icon could sit stale for however long the driver stayed on
+    // this screen, which is what made it look 5-10s slower than the Quick
+    // Toggles/Clock widgets' own 2s poll. A real callback reacts to the
+    // connection itself instead of app-foreground timing.
+    private fun startConnectivityCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return // registerNetworkCallback(request, callback) needs API 24+
+        val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: android.net.Network, caps: NetworkCapabilities) {
+                _isWifi.value = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                _isData.value = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+            }
+            override fun onLost(network: android.net.Network) {
+                refreshConnectivity() // a different transport may still be up
+            }
+        }
+        runCatching { cm.registerNetworkCallback(request, callback) }
+            .onSuccess { networkCallback = callback }
+    }
+
     // ── Voltage ───────────────────────────────────────────────────────────────
     // Most aftermarket head units have no real internal battery — the vendor ROM
     // wires the car's 12V input straight into Android's standard battery-voltage
@@ -834,6 +862,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         radioObserver?.let { getApplication<Application>().contentResolver.unregisterContentObserver(it) }
         radioObserver = null
         runCatching { getApplication<Application>().unregisterReceiver(batteryReceiver) }
+        networkCallback?.let {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            runCatching { cm.unregisterNetworkCallback(it) }
+        }
         speechRecognizer?.destroy()
         tts?.shutdown()
     }
@@ -1165,7 +1197,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun pairedBluetoothDeviceNames(): List<String> {
+    fun pairedBluetoothDeviceNames(): List<String> {
         val app = getApplication<Application>()
         if (ContextCompat.checkSelfPermission(app, android.Manifest.permission.BLUETOOTH_CONNECT) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -1407,7 +1439,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // car-integration apps in practice, but not a guaranteed-stable API, and
     // completely unverified on this unit's specific ROM/Bluetooth stack — see
     // the fallback below.
-    private fun setBluetoothDeviceConnected(deviceName: String, connect: Boolean) {
+    fun setBluetoothDeviceConnected(deviceName: String, connect: Boolean) {
         val app = getApplication<Application>()
         if (ContextCompat.checkSelfPermission(app, android.Manifest.permission.BLUETOOTH_CONNECT) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -1450,6 +1482,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     init {
         ensureTts() // warm up early — see pendingSpeech note above
         refreshVolumeLevel()
+        refreshConnectivity()
+        startConnectivityCallback()
         viewModelScope.launch {
             VoiceAssistantBridge.wakeWordDetected.collect { startVoiceCommand() }
         }
