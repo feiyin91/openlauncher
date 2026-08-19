@@ -236,10 +236,9 @@ fun HomeScreen(
                 }
                 Spacer(Modifier.width(8.dp))
             }
-            AnimatedVisibility(visible = isWifi, enter = fadeIn(), exit = fadeOut()) {
-                Icon(Icons.Default.Wifi, "WiFi", tint = statusIconColor, modifier = Modifier.size(16.dp))
-            }
-            if (isWifi) Spacer(Modifier.width(6.dp))
+            // WiFi icon dropped from the header — the control rail's own
+            // WiFi tile is both live (real NetworkCallback, not on-resume
+            // polling) and reachable, so this was pure duplication.
             AnimatedVisibility(visible = isData, enter = fadeIn(), exit = fadeOut()) {
                 Icon(Icons.Default.SignalCellularAlt, "Data", tint = statusIconColor, modifier = Modifier.size(16.dp))
             }
