@@ -169,17 +169,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
             // Settings.Panel.ACTION_WIFI is the system's own bottom-sheet-style
-            // panel — stays inside OpenLauncher rather than switching apps,
-            // same reason the Clock widget's WiFi icon used it. Bluetooth has
-            // no equivalent (see BluetoothPanel), which is why that one needed
-            // a curated screen instead of just launching a system intent.
-            val onOpenWifiPanel: () -> Unit = {
+            // panel — the only way to actually add/switch a network (apps
+            // haven't been able to drive that flow themselves since API 29).
+            // Kept as the fallback action inside the themed WifiPanel rather
+            // than the rail's direct tap target, so the common case (glancing
+            // at what's already connected) stays on-theme.
+            val onOpenSystemWifiPanel: () -> Unit = {
                 runCatching {
                     startActivity(Intent(android.provider.Settings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }.onFailure {
                     runCatching { startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }
             }
+            var wifiPanelOpen by remember { mutableStateOf(false) }
 
             // A preset themeId overrides the manually-picked accent/background/font
             // colors below; "custom" (or an unrecognized id) falls through to those.
@@ -357,7 +359,10 @@ class MainActivity : ComponentActivity() {
                                         volumeLevel           = volumeLevel,
                                         onVolumeUp            = { vm.bumpVolume(up = true) },
                                         onVolumeDown          = { vm.bumpVolume(up = false) },
-                                        onOpenWifiPanel          = onOpenWifiPanel,
+                                        onOpenSystemWifiPanel    = onOpenSystemWifiPanel,
+                                        wifiPanelOpen            = wifiPanelOpen,
+                                        onRequestWifiPanel       = { wifiPanelOpen = true },
+                                        onDismissWifiPanel       = { wifiPanelOpen = false },
                                         onRequestBluetoothPanel  = onRequestBluetoothPanel,
                                         bluetoothPanelOpen       = bluetoothPanelOpen,
                                         onDismissBluetoothPanel  = { bluetoothPanelOpen = false },

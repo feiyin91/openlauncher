@@ -155,7 +155,10 @@ fun HomeScreen(
     volumeLevel: Float = 0f,
     onVolumeUp: () -> Unit = {},
     onVolumeDown: () -> Unit = {},
-    onOpenWifiPanel: () -> Unit = {},
+    onOpenSystemWifiPanel: () -> Unit = {}, // Settings.Panel.ACTION_WIFI — the only way to actually add/switch networks, see WifiPanel
+    wifiPanelOpen: Boolean = false,
+    onRequestWifiPanel: () -> Unit = {},
+    onDismissWifiPanel: () -> Unit = {},
     onRequestBluetoothPanel: () -> Unit = {}, // checks/requests BLUETOOTH_CONNECT, then opens bluetoothPanelOpen below
     bluetoothPanelOpen: Boolean = false,
     onDismissBluetoothPanel: () -> Unit = {},
@@ -686,7 +689,7 @@ fun HomeScreen(
             onStopVoiceCommand = onStopVoiceCommand,
             onVolumeUp = onVolumeUp,
             onVolumeDown = onVolumeDown,
-            onOpenWifiPanel = onOpenWifiPanel,
+            onOpenWifiPanel = onRequestWifiPanel,
             onOpenBluetoothPanel = onRequestBluetoothPanel,
             modifier = Modifier
                 .width(60.dp)
@@ -771,11 +774,27 @@ fun HomeScreen(
         )
     }
 
+    // ── WiFi panel ────────────────────────────────────────────────────────────
+    // Android's own Settings.Panel.ACTION_WIFI is the only way to actually
+    // connect to a new network — apps have not been able to drive that flow
+    // themselves since Android 10 — so it stays as the "add/switch network"
+    // action, but living inside a themed status card instead of being the
+    // rail's direct tap target means the common case (glancing at what
+    // you're already connected to) never leaves OpenLauncher's own look.
+    if (wifiPanelOpen) {
+        WifiPanel(
+            accent    = accent,
+            isDayMode = isDayMode,
+            onOpenSystemPanel = { onDismissWifiPanel(); onOpenSystemWifiPanel() },
+            onDismiss = onDismissWifiPanel
+        )
+    }
+
     // ── Bluetooth panel ───────────────────────────────────────────────────────
-    // Curated in-app equivalent of Settings.Panel.ACTION_WIFI (which Android
-    // ships and WiFi already uses) — no Bluetooth equivalent exists in the
-    // public API, so tapping Bluetooth used to jump all the way out to the
-    // system Settings app. This stays inside OpenLauncher instead.
+    // Curated in-app equivalent of the above — no Bluetooth equivalent of
+    // Settings.Panel.ACTION_WIFI exists in the public API, so tapping
+    // Bluetooth used to jump all the way out to the system Settings app.
+    // This stays inside OpenLauncher instead.
     if (bluetoothPanelOpen) {
         BluetoothPanel(
             accent      = accent,
@@ -1036,6 +1055,135 @@ private fun BluetoothPanel(
                         }
                         HorizontalDivider(color = panelBorder)
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Themed WiFi status card — SSID, signal, connected/not. Android hasn't let
+ * regular apps drive an actual "pick a network, enter a password, connect"
+ * flow since API 29 (a security restriction, not a gap this app could close
+ * even with more work — the same class of wall as the CarPlay-rooting
+ * question elsewhere in this project), so this can only ever be a status
+ * view. The one action it offers hands off to Settings.Panel.ACTION_WIFI —
+ * the system's own bottom-sheet panel — for the rare case of actually
+ * adding or switching networks, which is the one thing this screen can't do
+ * on-theme no matter how it's built.
+ */
+@Composable
+private fun WifiPanel(
+    accent: Color,
+    isDayMode: Boolean,
+    onOpenSystemPanel: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val panelBg     = if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF0E0E0E)
+    val panelBorder = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF1A1A1A)
+    val labelColor  = if (isDayMode) Color(0xFF111111) else Color(0xFFEFEFEF)
+    val subtleColor = if (isDayMode) Color(0xFF888888) else Color(0xFF666666)
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wifiManager = remember {
+        context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+    }
+    var connected by remember { mutableStateOf(false) }
+    var ssid by remember { mutableStateOf<String?>(null) }
+    var signalLevel by remember { mutableStateOf(0) } // 0..4
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val enabled = wifiManager?.isWifiEnabled == true
+            @Suppress("DEPRECATION")
+            val info = if (enabled) wifiManager?.connectionInfo else null
+            val rawSsid = info?.ssid?.trim('"')
+            connected = enabled && rawSsid != null && rawSsid != "<unknown ssid>" && rawSsid.isNotBlank()
+            ssid = if (connected) rawSsid else null
+            @Suppress("DEPRECATION")
+            signalLevel = if (connected && info != null) {
+                runCatching { android.net.wifi.WifiManager.calculateSignalLevel(info.rssi, 5) }.getOrDefault(0)
+            } else 0
+            kotlinx.coroutines.delay(2000)
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    indication        = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick           = onDismiss
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {} // swallow taps so they don't fall through to the scrim
+                    .background(panelBg)
+                    .border(1.dp, panelBorder)
+                    .padding(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Wifi, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(text = "WIFI", color = labelColor, letterSpacing = 2.sp, fontSize = 14.sp)
+                    Spacer(Modifier.weight(1f))
+                    Icon(
+                        Icons.Default.Close, contentDescription = "Close", tint = subtleColor,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable(
+                                indication        = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick           = onDismiss
+                            )
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text     = ssid ?: "Not connected",
+                    color    = if (connected) labelColor else subtleColor,
+                    fontSize = 18.sp
+                )
+                if (connected) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text     = when (signalLevel) {
+                            4, 3 -> "Strong signal"
+                            2    -> "Fair signal"
+                            else -> "Weak signal"
+                        },
+                        color    = subtleColor,
+                        fontSize = 12.sp
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = panelBorder)
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            indication        = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick           = onOpenSystemPanel
+                        )
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text     = "ADD OR SWITCH NETWORK",
+                        color    = accent,
+                        fontSize = 12.sp,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
                 }
             }
         }
