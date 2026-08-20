@@ -61,6 +61,7 @@ import com.openlauncher.app.util.buildVoiceSystemPrompt
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -88,6 +89,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val nav: StateFlow<NavDestination> = _nav
 
     fun navigate(dest: NavDestination) { _nav.value = dest }
+
+    // Used by the voice "go to X screen" commands, which are meaningless if
+    // some other app is actually the one in front — this app being the HOME
+    // launcher is what makes getLaunchIntentForPackage(own package) work as
+    // a "bring to front" call without needing a direct MainActivity reference.
+    private fun bringAppToForeground() {
+        val app = getApplication<Application>()
+        runCatching {
+            val intent = app.packageManager.getLaunchIntentForPackage(app.packageName) ?: return
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            app.startActivity(intent)
+        }
+    }
 
     // ── Shortcut picker ───────────────────────────────────────────────────────
     private val _shortcutPickerSlot = MutableStateFlow<Int?>(null)
@@ -441,6 +455,21 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun skipNext() { nowPlaying.value?.controller?.transportControls?.skipToNext() }
     fun skipPrev() { nowPlaying.value?.controller?.transportControls?.skipToPrevious() }
+
+    // Standard media-button semantics: skipToPrevious() restarts the current
+    // track on a single call, and only actually moves to the previous track
+    // on a second call shortly after (the same reason a physical "previous"
+    // button needs two clicks). Left skipPrev() itself alone since that's
+    // the expected behavior for an actual manual tap — this is specifically
+    // for "go back a track" by voice, where saying it once should mean it.
+    fun voiceSkipToPreviousTrack() {
+        val transportControls = nowPlaying.value?.controller?.transportControls ?: return
+        transportControls.skipToPrevious()
+        viewModelScope.launch {
+            delay(400)
+            transportControls.skipToPrevious()
+        }
+    }
 
     // ── Weather ───────────────────────────────────────────────────────────────
     private val _weather = MutableStateFlow<WeatherState?>(null)
@@ -899,6 +928,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val ttsDebugInfo: StateFlow<String> = _ttsDebugInfo
     val wakeWordDebug: StateFlow<String> = VoiceAssistantBridge.wakeWordDebug
 
+    // Timestamp of the last wake-word trigger, for the small status dot that
+    // replaced the score/peak/mic debug readout — HomeScreen flashes it
+    // green for a moment whenever this changes.
+    private val _wakeWordPulse = MutableStateFlow(0L)
+    val wakeWordPulse: StateFlow<Long> = _wakeWordPulse
+
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -994,16 +1029,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val USE_GEMINI_LIVE = false
 
     fun startVoiceCommand() {
-        // Claim the slot before anything else. Coming back from another app
-        // can leave a second ViewModel instance collecting wake-word events,
-        // so one detection starts two parallel recognition sessions — which
-        // presented as an instant "didn't catch that" (the session that lost
-        // the race) immediately followed by the real answer. Both instances
-        // share this state via VoiceAssistantBridge, and both run on the main
-        // thread, so a plain check-then-set here is enough to let the first
-        // through and turn the second into a no-op.
-        if (_voiceState.value != VoiceAssistantState.IDLE) return
-        _voiceState.value = VoiceAssistantState.LISTENING
+        // Claim the slot atomically before anything else. This used to be a
+        // plain check-then-set, reasoned as safe since everything touching
+        // _voiceState runs on the main thread — but the double-session
+        // symptom came back (this time from the manual mic button, not just
+        // the wake word), so that reasoning had a gap somewhere. compareAndSet
+        // costs nothing extra and removes the check-then-act window entirely,
+        // regardless of what the actual gap was.
+        if (!_voiceState.compareAndSet(VoiceAssistantState.IDLE, VoiceAssistantState.LISTENING)) return
 
         ensureTts()
         _voiceTranscript.value = null
@@ -1300,7 +1333,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 runCatching { DayNightMode.valueOf(mode) }.getOrNull()?.let { m -> updateSettings { copy(dayNightMode = m) } }
             }
             "NAVIGATE_SCREEN" -> result.screen?.let { s ->
-                runCatching { NavDestination.valueOf(s) }.getOrNull()?.let { navigate(it) }
+                runCatching { NavDestination.valueOf(s) }.getOrNull()?.let {
+                    navigate(it)
+                    // navigate() only sets internal nav state — a no-op to
+                    // look at if another app (Spotify, Waze) is actually the
+                    // one in front. "Go back to home screen" needs this app
+                    // brought forward too, not just told which of its own
+                    // screens to show once it's visible again.
+                    bringAppToForeground()
+                }
             }
             "SET_CLOCK_FORMAT" -> result.clockFormat?.let { fmt ->
                 updateSettings { copy(use24HourFormat = fmt.trim() == "24") }
@@ -1308,7 +1349,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             "SET_VOLUME" -> result.direction?.let { adjustDeviceVolume(it, result.steps ?: 1) }
             "PLAY_MUSIC" -> result.query?.let { playFromSearch(it) }
             "SKIP_TRACK" -> skipNext()
-            "PREVIOUS_TRACK" -> skipPrev()
+            "PREVIOUS_TRACK" -> voiceSkipToPreviousTrack()
             "PLAY_PAUSE" -> playPause()
             "NAVIGATE_WAZE" -> result.destination?.let { launchWazeNavigation(it) }
             "ADD_FUEL_ENTRY" -> {
@@ -1353,7 +1394,36 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _volumeLevel.value = am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
     }
 
-    fun bumpVolume(up: Boolean) = adjustDeviceVolume(if (up) "UP" else "DOWN", 1)
+    // adjustStreamVolume(ADJUST_RAISE/LOWER) moves by a single OS-level unit,
+    // which on this unit's ~14-15-step STREAM_MUSIC range works out to ~7%
+    // per tap — not a round number, and not what was asked for. Rail
+    // taps now set an exact target index instead, computed as 5% of max.
+    // (Voice's "turn it up by two" is untouched — that's still OS steps,
+    // since "by two" means two of whatever unit the driver is used to,
+    // not two of this specific 5% granularity.)
+    fun bumpVolume(up: Boolean) {
+        val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        val current = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val step = (max * 0.05f).roundToInt().coerceAtLeast(1)
+        val target = (current + if (up) step else -step).coerceIn(0, max)
+        runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0) }
+        refreshVolumeLevel()
+    }
+
+    // Requested explicitly: force STREAM_MUSIC to a known, safe 80% on every
+    // app/unit boot rather than trusting whatever the hardware last
+    // remembered — this is deliberately not a one-time default, it overrides
+    // every single startup.
+    private fun presetBootVolume() {
+        val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        val target = (max * 0.8f).roundToInt().coerceIn(0, max)
+        runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0) }
+        refreshVolumeLevel()
+    }
 
     // Standard MediaSession command — the same one "OK Google, play X on Spotify"
     // uses, so any MediaSession-compatible app already supports it with no
@@ -1481,11 +1551,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         ensureTts() // warm up early — see pendingSpeech note above
-        refreshVolumeLevel()
+        presetBootVolume()
         refreshConnectivity()
         startConnectivityCallback()
         viewModelScope.launch {
-            VoiceAssistantBridge.wakeWordDetected.collect { startVoiceCommand() }
+            VoiceAssistantBridge.wakeWordDetected.collect {
+                _wakeWordPulse.value = System.currentTimeMillis()
+                startVoiceCommand()
+            }
         }
         loadInstalledApps()
         refreshConnectivity()

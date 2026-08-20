@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
             val availableVoices by vm.availableVoices.collectAsStateWithLifecycle()
             val ttsDebugInfo    by vm.ttsDebugInfo.collectAsStateWithLifecycle()
             val wakeWordDebug   by vm.wakeWordDebug.collectAsStateWithLifecycle()
+            val wakeWordPulse   by vm.wakeWordPulse.collectAsStateWithLifecycle()
             val volumeLevel     by vm.volumeLevel.collectAsStateWithLifecycle()
             val micContext = LocalContext.current
             // Bundled with the mic permission request rather than a separate
@@ -356,6 +357,7 @@ class MainActivity : ComponentActivity() {
                                         onStartVoiceCommand   = onStartVoiceCommand,
                                         onStopVoiceCommand    = { vm.stopVoiceCommand() },
                                         wakeWordDebug         = wakeWordDebug,
+                                        wakeWordPulse         = wakeWordPulse,
                                         volumeLevel           = volumeLevel,
                                         onVolumeUp            = { vm.bumpVolume(up = true) },
                                         onVolumeDown          = { vm.bumpVolume(up = false) },

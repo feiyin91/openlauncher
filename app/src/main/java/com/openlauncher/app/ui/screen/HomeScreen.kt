@@ -152,6 +152,7 @@ fun HomeScreen(
     onStartVoiceCommand: () -> Unit = {},
     onStopVoiceCommand: () -> Unit = {},
     wakeWordDebug: String = "",
+    wakeWordPulse: Long = 0L,
     volumeLevel: Float = 0f,
     onVolumeUp: () -> Unit = {},
     onVolumeDown: () -> Unit = {},
@@ -292,17 +293,26 @@ fun HomeScreen(
             }
         }
 
-        // Wake-word debug readout — no USB debugging on this ROM, so this is
-        // the only way to see the live detection score while testing "Hi
-        // Sebastian" sensitivity. Remove once tuning is done and confirmed
-        // reliable in real driving conditions.
-        if (wakeWordDebug.isNotBlank()) {
-            Text(
-                text       = "wakeword: $wakeWordDebug",
-                color      = headerTextColor.copy(alpha = 0.5f),
-                fontSize   = 9.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                modifier   = Modifier.padding(horizontal = 20.dp)
+        // The score/peak/mic debug readout that lived here was for tuning
+        // "Hi Sebastian" sensitivity during development — replaced with a
+        // small status dot now that it's confirmed reliable. wakeWordDebug
+        // is still computed (see WakeWordService) in case tuning is ever
+        // needed again, just no longer rendered.
+        run {
+            var pulse by remember { mutableStateOf(false) }
+            LaunchedEffect(wakeWordPulse) {
+                if (wakeWordPulse > 0L) {
+                    pulse = true
+                    kotlinx.coroutines.delay(1500)
+                    pulse = false
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .padding(start = 20.dp, top = 2.dp)
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(if (pulse) Color(0xFF4CAF50) else accent.copy(alpha = 0.25f))
             )
         }
 
@@ -539,7 +549,6 @@ fun HomeScreen(
                             isDayMode  = isDayMode,
                             location   = location,
                             showSunriseSunset = settings.showSunriseSunset,
-                            showQuickToggles  = settings.showQuickTogglesInClock,
                             isEditing  = editMode,
                             use24HourFormat = settings.use24HourFormat,
                             modifier   = Modifier.fillMaxSize()
@@ -713,7 +722,6 @@ fun HomeScreen(
             pipAppPackage       = settings.pipAppPackage,
             use24HourFormat     = settings.use24HourFormat,
             showSunriseSunset   = settings.showSunriseSunset,
-            showQuickTogglesInClock = settings.showQuickTogglesInClock,
             showWindSpeed       = settings.showWindSpeed,
             showFeelsLike       = settings.showFeelsLike,
             showRainChance      = settings.showRainChance,
@@ -1302,7 +1310,6 @@ private fun WidgetContextMenu(
     pipAppPackage: String = "",
     use24HourFormat: Boolean = true,
     showSunriseSunset: Boolean = true,
-    showQuickTogglesInClock: Boolean = true,
     showWindSpeed: Boolean = true,
     showFeelsLike: Boolean = true,
     showRainChance: Boolean = true,
@@ -1367,14 +1374,6 @@ private fun WidgetContextMenu(
                     icon    = Icons.Default.WbSunny,
                     tint    = if (showSunriseSunset) accent else inactiveMenuTint,
                     onClick = { onToggle { copy(showSunriseSunset = !showSunriseSunset) } },
-                    isDayMode = isDayMode
-                )
-                HorizontalDivider(color = menuDivider)
-                ContextRow(
-                    label   = if (showQuickTogglesInClock) "QUICK TOGGLES  ON" else "QUICK TOGGLES  OFF",
-                    icon    = Icons.Default.Wifi,
-                    tint    = if (showQuickTogglesInClock) accent else inactiveMenuTint,
-                    onClick = { onToggle { copy(showQuickTogglesInClock = !showQuickTogglesInClock) } },
                     isDayMode = isDayMode
                 )
             }

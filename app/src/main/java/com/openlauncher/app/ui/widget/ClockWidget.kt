@@ -37,7 +37,6 @@ fun ClockWidget(
     isDayMode: Boolean = false,
     location: LocationData? = null,
     showSunriseSunset: Boolean = true,
-    showQuickToggles: Boolean = true,
     isEditing: Boolean = false,
     use24HourFormat: Boolean = true,
     modifier: Modifier = Modifier
@@ -59,7 +58,7 @@ fun ClockWidget(
             ClockStyle.DIGITAL -> DigitalClock(
                 cal = calendar, contentColor = contentColor, subColor = subColor, accent = accent,
                 location = location, showSunriseSunset = showSunriseSunset,
-                showQuickToggles = showQuickToggles, isDayMode = isDayMode, isEditing = isEditing,
+                isDayMode = isDayMode, isEditing = isEditing,
                 use24HourFormat = use24HourFormat
             )
             ClockStyle.ANALOG  -> AnalogClock(calendar, accent, isDayMode)
@@ -75,7 +74,6 @@ private fun DigitalClock(
     accent: Color,
     location: LocationData?,
     showSunriseSunset: Boolean,
-    showQuickToggles: Boolean,
     isDayMode: Boolean,
     isEditing: Boolean,
     use24HourFormat: Boolean
@@ -149,72 +147,9 @@ private fun DigitalClock(
             }
         }
 
-        // Right rail — WiFi/Bluetooth stacked portrait-style in the panel's
-        // otherwise-empty right side. DND dropped: not something anyone
-        // actually reaches for on a car head unit.
-        if (showQuickToggles) {
-            Spacer(Modifier.width(10.dp))
-            CompactQuickToggles(
-                accent    = accent,
-                isDayMode = isDayMode,
-                isEditing = isEditing,
-                modifier  = Modifier.fillMaxHeight()
-            )
-        }
-    }
-}
-
-/**
- * Icon-only WiFi/Bluetooth rail for the Clock panel's empty right side —
- * a slimmer sibling of [QuickTogglesWidget] (which is padded for filling
- * a whole standalone widget cell, not standing in a narrow column).
- */
-@Composable
-private fun CompactQuickToggles(accent: Color, isDayMode: Boolean, isEditing: Boolean, modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val wifiManager = remember { context.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager }
-
-    var wifiOn by remember { mutableStateOf(wifiManager?.isWifiEnabled == true) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            wifiOn = wifiManager?.isWifiEnabled == true
-            delay(2000)
-        }
-    }
-
-    val inactiveTint = if (isDayMode) Color(0xFF999999) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f)
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = Icons.Default.Wifi,
-            contentDescription = "WiFi",
-            tint = if (wifiOn) accent else inactiveTint,
-            modifier = Modifier
-                .size(18.dp)
-                .clickable(enabled = !isEditing) {
-                    runCatching {
-                        context.startActivity(android.content.Intent(android.provider.Settings.Panel.ACTION_WIFI).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }.onFailure {
-                        runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    }
-                }
-        )
-        Spacer(Modifier.height(16.dp))
-        Icon(
-            imageVector = Icons.Default.Bluetooth,
-            contentDescription = "Bluetooth",
-            tint = inactiveTint,
-            modifier = Modifier
-                .size(18.dp)
-                .clickable(enabled = !isEditing) {
-                    runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                }
-        )
+        // WiFi/Bluetooth used to have a compact icon rail here
+        // (CompactQuickToggles) — removed now that the control rail on the
+        // main dashboard covers both, bigger and easier to hit while driving.
     }
 }
 
