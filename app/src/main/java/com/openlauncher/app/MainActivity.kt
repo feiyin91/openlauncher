@@ -74,51 +74,16 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        // Voice "go home" (LauncherViewModel.bringAppToForeground) needs this
-        // permission to actually work while another app (Spotify, Waze) has
-        // the screen — without it, Android silently blocks a background app
-        // from starting a new Activity. Must be requested from here, while
-        // the app is genuinely in the foreground, since the permission
-        // request itself is an Activity launch and would hit the same wall
-        // if fired from the background later.
-        if (android.os.Build.VERSION.SDK_INT >= 23) {
-            if (android.provider.Settings.canDrawOverlays(this)) {
-                // Already granted — so if "go home" is still failing, overlay
-                // permission was never the actual blocker and this whole
-                // theory needs revisiting instead of re-asking for something
-                // already held.
-                android.widget.Toast.makeText(this, "Overlay permission: already granted", android.widget.Toast.LENGTH_LONG).show()
-            } else {
-                val result = runCatching {
-                    startActivity(
-                        Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:$packageName")
-                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                }
-                if (result.isFailure) {
-                    // This specific intent not resolving (rather than the
-                    // permission already being granted) is the likely reason
-                    // nothing appeared — some stripped-down vendor Settings
-                    // apps on cheap head units don't implement every stock
-                    // screen. Fall back to plain App Info, where the same
-                    // toggle is usually reachable manually.
-                    android.widget.Toast.makeText(
-                        this, "Overlay settings screen not found (${result.exceptionOrNull()?.message}) — opening App Info instead",
-                        android.widget.Toast.LENGTH_LONG
-                    ).show()
-                    runCatching {
-                        startActivity(
-                            Intent(
-                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                android.net.Uri.parse("package:$packageName")
-                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                    }
-                }
-            }
-        }
+        // Voice "go home" (LauncherViewModel.bringAppToForeground) needs the
+        // "display over other apps" permission to work while another app has
+        // the screen. Used to auto-launch ACTION_MANAGE_OVERLAY_PERMISSION
+        // here to prompt for it — removed: on this unit's vendor Settings app
+        // that intent doesn't resolve to an app-specific screen at all, it
+        // falls through to their generic WiFi settings page, and was hijacking
+        // every single cold boot into that screen instead of the dashboard.
+        // Harvard granted the permission manually (Settings > Apps >
+        // OpenLauncher > Display over other apps) and confirmed "go home"
+        // works — nothing left for this app to do at startup.
 
         // "Hi Sebastian" wake-word listener — only meaningful once mic
         // permission is granted (checked here for the case it was already
