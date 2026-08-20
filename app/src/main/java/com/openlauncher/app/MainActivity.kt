@@ -74,6 +74,24 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // Voice "go home" (LauncherViewModel.bringAppToForeground) needs this
+        // permission to actually work while another app (Spotify, Waze) has
+        // the screen — without it, Android silently blocks a background app
+        // from starting a new Activity. Must be requested from here, while
+        // the app is genuinely in the foreground, since the permission
+        // request itself is an Activity launch and would hit the same wall
+        // if fired from the background later.
+        if (android.os.Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
+            runCatching {
+                startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:$packageName")
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
+
         // "Hi Sebastian" wake-word listener — only meaningful once mic
         // permission is granted (checked here for the case it was already
         // granted in a prior session; also (re)started from the mic

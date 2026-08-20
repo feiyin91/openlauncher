@@ -33,6 +33,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Lets bringAppToForeground() (voice "go home" while another app like
+         Spotify has the screen) actually work — Android blocks a background
+         app from starting a new Activity unless it holds this permission.
+         Without it the call is silently dropped, no crash, nothing visible. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Media session control (requires notification access grant by user) -->
     <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL" />
 
