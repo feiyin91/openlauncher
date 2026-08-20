@@ -81,14 +81,42 @@ class MainActivity : ComponentActivity() {
         // the app is genuinely in the foreground, since the permission
         // request itself is an Activity launch and would hit the same wall
         // if fired from the background later.
-        if (android.os.Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
-            runCatching {
-                startActivity(
-                    Intent(
-                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        android.net.Uri.parse("package:$packageName")
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            if (android.provider.Settings.canDrawOverlays(this)) {
+                // Already granted — so if "go home" is still failing, overlay
+                // permission was never the actual blocker and this whole
+                // theory needs revisiting instead of re-asking for something
+                // already held.
+                android.widget.Toast.makeText(this, "Overlay permission: already granted", android.widget.Toast.LENGTH_LONG).show()
+            } else {
+                val result = runCatching {
+                    startActivity(
+                        Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                if (result.isFailure) {
+                    // This specific intent not resolving (rather than the
+                    // permission already being granted) is the likely reason
+                    // nothing appeared — some stripped-down vendor Settings
+                    // apps on cheap head units don't implement every stock
+                    // screen. Fall back to plain App Info, where the same
+                    // toggle is usually reachable manually.
+                    android.widget.Toast.makeText(
+                        this, "Overlay settings screen not found (${result.exceptionOrNull()?.message}) — opening App Info instead",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    runCatching {
+                        startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:$packageName")
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }
             }
         }
 
