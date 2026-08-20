@@ -1028,15 +1028,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // path shows up later (e.g. the unit's own SIM data, if ever active).
     private val USE_GEMINI_LIVE = false
 
-    fun startVoiceCommand() {
+    /** @param playChime audible confirmation for the wake word specifically — a manual tap already has the visual mic-state change as feedback, so it isn't chimed too. */
+    fun startVoiceCommand(playChime: Boolean = false) {
         // Claim the slot atomically before anything else. This used to be a
         // plain check-then-set, reasoned as safe since everything touching
         // _voiceState runs on the main thread — but the double-session
         // symptom came back (this time from the manual mic button, not just
         // the wake word), so that reasoning had a gap somewhere. compareAndSet
         // costs nothing extra and removes the check-then-act window entirely,
-        // regardless of what the actual gap was.
+        // regardless of what the actual gap was. Gating the chime on this same
+        // successful claim (rather than firing it unconditionally from the
+        // wake-word collector) is also what stops two ViewModel instances from
+        // both chiming for the same detection.
         if (!_voiceState.compareAndSet(VoiceAssistantState.IDLE, VoiceAssistantState.LISTENING)) return
+        if (playChime) playWakeChime()
 
         ensureTts()
         _voiceTranscript.value = null
@@ -1425,6 +1430,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         refreshVolumeLevel()
     }
 
+    // Wake-word confirmation — with no screen glance while driving, the only
+    // sign "Hi Sebastian" actually fired was a visual state change. On
+    // STREAM_MUSIC so it mixes with whatever's already playing rather than
+    // ducking it entirely; short ToneGenerator beep rather than a bundled
+    // audio asset since nothing about the sound itself needs to be distinctive.
+    private fun playWakeChime() {
+        runCatching {
+            val toneGen = android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 90)
+            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 150)
+            viewModelScope.launch {
+                delay(300)
+                runCatching { toneGen.release() }
+            }
+        }
+    }
+
     // Standard MediaSession command — the same one "OK Google, play X on Spotify"
     // uses, so any MediaSession-compatible app already supports it with no
     // Spotify-specific integration needed on our end.
@@ -1557,7 +1578,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             VoiceAssistantBridge.wakeWordDetected.collect {
                 _wakeWordPulse.value = System.currentTimeMillis()
-                startVoiceCommand()
+                startVoiceCommand(playChime = true)
             }
         }
         loadInstalledApps()
