@@ -1,7 +1,7 @@
 <div align="center">
   <img width="256" height="256" alt="logoo" src="https://github.com/user-attachments/assets/4c5c4ddb-836d-4c59-8325-76b8c8d78bb3" />
   <h1>Open Launcher</h1>
-  <p><strong>An open-source, offline-first Android launcher built specifically for aftermarket car head units.</strong></p>
+  <p><strong>An open-source Android launcher built specifically for aftermarket car head units — mostly offline-capable, see below for exactly which parts need a connection.</strong></p>
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
   [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
@@ -14,109 +14,98 @@
 ---
 
 ## 📖 Table of Contents
-- [Why Build Another Car Launcher?](#-why-build-another-car-launcher)
-- [The Philosophy](#-the-philosophy-offline-first--oem-aesthetics)
+- [Why this exists](#-why-this-exists)
+- [The Philosophy](#-the-philosophy-oem-aesthetics-honestly-labeled-offline-support)
 - [Current Features](#-current-features)
-- [Roadmap & Future Plans](#️-roadmap--future-plans)
-- [Contributing](#-contributing-open-source-first)
+- [Roadmap](#️-roadmap)
+- [Contributing](#-contributing)
 - [License](#-license)
 
 ---
 
-## 🛑 Why build another car launcher?
+## 🛑 Why this exists
 
-I built this project for three simple reasons:
+Three reasons the original project started, still true here:
 
-1. **No Premium Paywalls:** I didn't want to pay someone for basic dashboard functionality.
-2. **Community-Driven:** I wanted it to be open-source. The car modding community is incredible, and I wanted to create a foundation that others could actually build upon, fork, and improve.
-3. **Clean Aesthetics:** Let's be honest—most Android launchers look like cheap video games, have zero functionality, or half the features are broken. This is built to look clean, professional, and integrated.
+1. **No premium paywalls** for basic dashboard functionality.
+2. **Community-driven and open-source** — a foundation others can actually build on, fork, and improve.
+3. **Clean aesthetics** — most Android launchers look like cheap video games or have half their features broken. This is built to look like it belongs in a car, not a phone screensaver.
 
-## 🧠 The Philosophy: Offline-First & OEM+ Aesthetics
+## 🧠 The philosophy: OEM+ aesthetics, honestly labeled offline support
 
-Most modern head unit setups rely on wireless CarPlay or Android Auto for navigation and media. That means the head unit itself is offline 90% of the time.
+Most aftermarket head units rely on wireless CarPlay or Android Auto for navigation and media, so the launcher itself is what you're actually looking at most of the drive. The goal is for it to look like it belongs in the car's interior, not like an app running on top of one.
 
-I designed this launcher around that reality. It is built to be functional without a Wi-Fi connection while remaining highly customizable. Whether you are installing this in a 2020 Corolla Hybrid or a custom project car, the goal is for the UI to look like it actually belongs in your car's interior—a true OEM+ aesthetic.
+**On the offline claim specifically** — the original framing was "offline-first," which oversells it. Here's what's actually true:
+
+- **Fully offline, always:** the widget grid itself, themes/personalization, Clock, Speedometer, Altimeter, Trip Meter, GPS Compass, Head Unit Vitals, Soundboard, Fuel Log, and GPS-based sunrise/sunset day-night switching. None of these make a network call.
+- **Needs a data or WiFi connection:** the Weather widget (calls a weather API) and the Location widget's place-name display (reverse-geocodes your GPS coordinates via the free Nominatim API). Both degrade gracefully — Weather hides itself rather than showing stale/wrong data when offline, and Location just shows raw coordinates instead of a place name.
+- The [voice assistant branch](https://github.com/feiyin91/openlauncher/tree/feat/gemini-voice-assistant) obviously needs a connection too, for the Gemini API calls — see that branch's own docs.
+
+So: most of the dashboard works with zero signal, which is the common case for these head units. A couple of specific widgets don't, and now you know exactly which ones before you're relying on them.
 
 ---
 
-## ✨ Current Features
+## ✨ Current features
 
-This project is currently in active development, but the core foundation is highly customizable:
+*(Real screenshots from an actual running build are pending — the placeholder images from the original project have been removed rather than left showing an interface that no longer matches what this fork actually looks like.)*
 
-<img width="2400" height="896" alt="Screenshot_20260527-025436" src="https://github.com/user-attachments/assets/a1bc63f3-2d4e-4ac0-bd56-b5d181681658" />
-<img width="2400" height="896" alt="Screenshot_20260527-212602" src="https://github.com/user-attachments/assets/cf319144-0a06-4bc6-ab83-855ef8514a9c" />
-<img width="2400" height="896" alt="Screenshot_20260527-025446" src="https://github.com/user-attachments/assets/cc038c53-dcf5-4b4b-bd73-bfcd18bd82d2" />
-<img width="2400" height="896" alt="Screenshot_20260527-025451" src="https://github.com/user-attachments/assets/cc038c53-dcf5-4b4b-bd73-bfcd18bd82d2" />
+### 🎨 8-theme dashboard system
+Eight built-in themes — Ignition, Amber, Cobalt, Verdigris, Plum, Blueprint, Circuit, Instrument — each with its own accent, background, and ink color defined for both day and night, auto-switching with sunrise/sunset. Beyond the presets, full manual control over accent color, background color/gradient, wallpaper (with adjustable dim), font weight, text scale, UI scale, and app font.
 
-### 🧩 Modular Widget Grid
-The home screen is a fully drag-and-drop, resize-capable grid. Every widget pane can be moved, scaled, and stacked however you want. Nothing is locked to a fixed position. Add and remove widgets from the built-in library at any time.
+### 🧩 Modular widget grid
+Drag-and-drop, resize-capable grid — every widget can be moved, scaled, and stacked freely. Add or remove widgets from the built-in library at any time. Two ready-made layout presets (default grid, and a media-dominant split panel) if you don't want to build one from scratch.
 
-### 🎛️ Instrument Panel Widgets
-A growing library of purpose-built car widgets designed to look like they belong on a dash — not a phone:
-
-* **Smart Music Player** — pulls track metadata, album art, and playback controls from any local or streaming source. Detects when CarPlay or Android Auto is in use and switches into shortcut mode automatically.
-* **AM/FM Radio** — instrument panel-style digital display that mirrors your head unit's **real tuner**. On szchoiceway-based units it talks to the MCU directly (seek, FM1/FM2/FM3/AM band switching, direct-tune frequency presets with memory). On every other unit it mirrors and controls your vendor radio app through its media session — assign the app once from the widget and get live frequency/station readout plus seek controls. No simulated stations or fake static.
-* **Speedometer** — standalone GPS-based digital speed readout. Independent from the trip tracker so it can live anywhere on the grid.
-* **Altimeter** — live elevation tracking pulled from the device GPS.
-* **Trip Meter** — taxi-style rolling odometer display with trip distance and elapsed time. Includes a hidden **0–100 km/h timer** (tap the meter label to reveal it) that auto-starts from standstill and locks in your time at 100.
-* **Head Unit Vitals** — real-time CPU load, memory pressure, and temperature readouts for monitoring your head unit's thermals on long drives.
-* **Soundboard** — 6 fully assignable sound pads. Each pad can be set to a built-in synth type (HORN, BEEP, ALERT, KICK, SNARE, BASS, FART) or loaded with any custom audio file from device storage. Assignments persist across restarts.
-* **Dynamic Weather** — auto-detects connectivity. Shows live weather when online, hides cleanly when offline. No broken blank widgets.
-* **GPS Compass** — live bearing with calibrated heading display.
+### 🎛️ Widgets
+* **Now Playing** — track metadata, centered album art, playback controls; source badge shows which app is playing.
+* **Fuel Log** — log fill-ups (odometer, volume, cost) and see computed efficiency over time.
+* **Quick Toggles** — WiFi/Bluetooth/DND launchers from the home grid.
+* **Location** — live GPS + reverse-geocoded place name, with a choosable detail level (neighborhood/city/region).
+* **Weather** — current conditions plus an hourly forecast row, place name shown in preference to raw coordinates.
+* **Digital/Analog Clock** — greeting + day/night icon, large time and date; optional sunrise/sunset row.
+* **AM/FM Radio** — on szchoiceway-based units, talks to the MCU directly (seek, band switching, frequency presets with memory); on other units, mirrors and controls your vendor radio app through its media session.
+* **Speedometer / Altimeter / GPS Compass** — standalone GPS-based readouts, placeable independently anywhere on the grid.
+* **Trip Meter** — rolling odometer with distance and elapsed time, plus a hidden 0–100 km/h timer (tap the label to reveal it).
+* **Head Unit Vitals** — CPU load, memory pressure, temperature.
+* **Soundboard** — 6 assignable pads, built-in synth sounds or your own audio files.
 
 ### 🗂️ App Library
-Pulls every installed app, including system-level apps that most launchers miss — such as buried CarPlay and Android Auto receiver apps on head units that don't surface them normally.
+Pulls every installed app, including buried system-level CarPlay/Android Auto receiver apps that most launchers don't surface.
 
-### 📌 Sidebar Shortcuts
-The sidebar holds your most-used app shortcuts. Drag to reorder, long-press to remap, and position the entire bar on the Left, Right, or Bottom of the screen to suit your driving hand or interior layout.
+### 📌 Sidebar shortcuts
+Drag to reorder, long-press to remap, position the bar Left/Right/Bottom to suit your driving hand.
 
-### 🌗 Smart Day/Night Theme Engine
-Four distinct modes for head units that can't always pass the car's headlight signal to Android:
-* **Forced Dark / Forced Light** — static overrides.
-* **System Sync** — follows the head unit's native light/dark setting.
-* **Sunset Mode** — automatically switches at local sunrise/sunset using offline location calculations, no internet required.
+### 🌗 Day/night modes
+Forced Dark, Forced Light, System Sync (follows the head unit's own setting), or Sunset Mode (auto-switches at local sunrise/sunset via offline GPS-based calculation — no network call for this one).
 
-### 🛰️ GPS with Offline Calibration
-Speed and distance calculations use a rewritten GPS math layer with improved filtering. A calibration offset option is available for devices whose GPS chips report inaccurate baselines — accessible from the trip meter settings for reliable offline use.
+### 🛰️ GPS with offline calibration
+A calibration offset for devices whose GPS chips report inaccurate baselines, accessible from the trip meter settings.
 
-### 🎨 Deep Personalization
-Accent color, background color, gradient, wallpaper with adjustable dim, font weight, text scale, UI scale, and app font — all tunable from the settings menu, which is organized into logical sections (Appearance, Layout, Widgets, System).
+### 📱 Picture-in-Picture overlay ⚠️ *Beta, inherited from upstream*
+Launch any app as a floating freeform window. Requires the special `openlauncher-test-pip` build (relies on AOSP platform-level signing) — not in the standard APK. Expect rough edges; compatibility varies heavily by head unit ROM.
 
-### 📱 Picture-in-Picture (PiP) Overlay ⚠️ *Beta*
-Launch any app as a floating freeform window layered over the launcher.
-
-> **This feature is currently in beta and requires the special `openlauncher-test-pip` build.** It relies on AOSP platform-level signing to access the window embedding APIs. The standard APK does not include PiP — use the `test-pip` release asset if you want to try it. Expect rough edges: not all apps behave correctly in a freeform window, and compatibility varies heavily by head unit ROM. This is a work in progress.
-
-### 🔔 First-Run Onboarding
-A clean onboarding flow on first launch explains key permissions (location, notification listener, draw-over-apps) before requesting them, with direct links to the relevant system settings screens.
+### 🔔 First-run onboarding
+Explains key permissions (location, notification listener, draw-over-apps) before requesting them, with direct links to the relevant system settings screens.
 
 ---
 
-## 🗺️ Roadmap & Future Plans
+## 🗺️ Roadmap
 
-The current priority is **stability and universal compatibility** — ensuring the launcher scales correctly across the wide range of aftermarket head unit resolutions and hardware specs.
-
-Remaining targets:
-
-- [ ] **Advanced Color Engine:** Per-element hex control for every surface in the UI — accent, text, borders, backgrounds — to precisely match a car's specific dashboard ambient lighting.
-- [ ] **Offline Weather via FM/RDS:** A highly experimental goal to pull local weather data directly from FM radio bands (RDS/TMC) using the car's physical antenna — bypassing Wi-Fi entirely.
-- [ ] **Universal Theming Engine:** A standardized platform for the community to build, share, and install full visual themes.
+- [ ] **Advanced color engine** — per-element hex control for every UI surface, to precisely match a specific dashboard's ambient lighting.
+- [ ] **Universal theming engine** — a standardized way to build, share, and install full visual themes.
+- [ ] Real screenshots of the current build, replacing the placeholder note above.
 
 ---
 
-## 🤝 Contributing (Open Source First)
+## 🤝 Contributing
 
-This project is open-source because it takes a community to build something that works across hundreds of different head unit models. Whether you are a developer, a designer, or just someone testing it in your car, your help is welcome!
+Whether you're a developer, a designer, or just testing it in your own car:
 
-### How you can help:
-1. **Test on your hardware:** Install the APK on your specific head unit, break things, and submit Bug Reports in the [Issues tab](../../issues).
-2. **Feature Requests:** Have a cool idea? Open a discussion.
-3. **Pull Requests:** See a bug you can fix or a feature you want to add? Fork the repo and submit a PR. *(Please check the issues tab first to see what is currently being worked on!)*
+1. **Test on your hardware** — install the APK, break things, open an issue.
+2. **Feature requests** — open a discussion.
+3. **Pull requests** — check open issues first to avoid duplicate work, then fork and submit.
 
 ---
 
-## Donate
+## 📄 License
 
-This app is fully free and open-source, a donation isn't required but would be greatly appreciated to help support the constant updates and fixes planned based on your suggestions!
-
-[![Donate with PayPal](https://raw.githubusercontent.com/stefan-niedermann/paypal-donate-button/master/paypal-donate-button.png)](https://paypal.me/dw2lam)
+MIT — see [LICENSE](LICENSE). Credit to [dw2lam](https://github.com/dw2lam/openlauncher) for the original project.
