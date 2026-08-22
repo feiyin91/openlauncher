@@ -980,7 +980,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** Lets Settings play a short sample so Harvard can hear a voice before picking it. */
+    /** Lets Settings play a short sample so the driver can hear a voice before picking it. */
     fun previewVoice(voiceName: String) {
         ensureTts()
         val match = tts?.voices?.find { it.name == voiceName } ?: return
@@ -1016,8 +1016,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var liveTranscriber: GeminiLiveTranscriber? = null
 
     // Gemini Live is meaningfully better at road/shop/place names than
-    // Android's on-device recognizer (the same reason Harvard Studio's
-    // lesson-note transcription moved off browser ASR for musical terms) —
+    // Android's on-device recognizer (the same reason a separate music-lesson
+    // app's transcription moved off browser ASR for musical terms) —
     // but proved completely unreliable on this car's actual network
     // (verified: the protocol itself is correct, tested end to end outside
     // Android; failure is specific to the in-car network path, reproduced

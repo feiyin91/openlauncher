@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
         // that intent doesn't resolve to an app-specific screen at all, it
         // falls through to their generic WiFi settings page, and was hijacking
         // every single cold boot into that screen instead of the dashboard.
-        // Harvard granted the permission manually (Settings > Apps >
+        // The permission was granted manually instead (Settings > Apps >
         // OpenLauncher > Display over other apps) and confirmed "go home"
         // works — nothing left for this app to do at startup.
 

@@ -21,10 +21,10 @@ import java.util.concurrent.TimeUnit
 /**
  * Speech-to-text via Gemini's Live API (WebSocket) instead of Android's
  * on-device SpeechRecognizer — chosen specifically for proper-noun accuracy
- * (road/shop/place names), the same reason Harvard Studio's lesson-note
+ * (road/shop/place names), the same reason a separate music-lesson app's
  * transcription switched to it over browser ASR (musical terms/composer
- * names). Protocol details below were pulled from Studio's own working
- * frontend implementation (Calendar.jsx), not just API docs, because two
+ * names). Protocol details below were pulled from that app's own working
+ * frontend implementation, not just API docs, because two
  * things aren't obvious from the docs alone and are confirmed live there:
  *
  * 1. responseModalities MUST be ["AUDIO"] — the model rejects "TEXT" outright

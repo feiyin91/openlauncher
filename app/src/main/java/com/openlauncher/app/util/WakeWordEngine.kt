@@ -17,7 +17,7 @@ import java.nio.FloatBuffer
  * the same feature-extraction models openWakeWord's own Python training
  * pipeline uses, plus a small classifier head trained specifically on the
  * "Hi Sebastian" phrase (see docs/wakeword-training notes / the Colab
- * training session — car_name chosen by Harvard and his wife).
+ * training session — "Sebastian" is this car's chosen name).
  *
  * Constants (chunk size, window sizes, stride, transform) mirror
  * openwakeword/utils.py's AudioFeatures class exactly — these aren't
@@ -50,8 +50,8 @@ class WakeWordEngine(context: Context) {
 
         /**
          * v2 was retrained on several spellings of the phrase after v1 turned
-         * out to only reward a careful three-syllable "Sebastian" — Harvard's
-         * natural delivery peaked around 0.16 against a 0.4 threshold. Measured
+         * out to only reward a careful three-syllable "Sebastian" — natural,
+         * casual delivery peaked around 0.16 against a 0.4 threshold. Measured
          * against the real models locally, v2 fires on six pronunciations v1
          * missed entirely, loses none, and leaves unrelated speech at 0.001.
          */
