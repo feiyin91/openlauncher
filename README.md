@@ -8,6 +8,8 @@
 </div>
 
 > **Fork notice:** this is Harvard Soo's independent fork of [dw2lam/openlauncher](https://github.com/dw2lam/openlauncher), the original project the sections below describe. Full credit to dw2lam for the foundation this builds on. Development here continues independently going forward rather than through upstream PRs, since the upstream repo hasn't seen maintainer activity in some time.
+>
+> **You're on the `feat/gemini-voice-assistant` branch** — dashboard-enhancements plus a full Gemini-powered voice assistant and an offline "Hey Sebastian" wake word. Needs your own free Gemini API key to build. See **[docs/VOICE_ASSISTANT.md](docs/VOICE_ASSISTANT.md)** for exactly what's different and a full setup guide. Don't want the voice assistant? The plain dashboard branch is [`feat/dashboard-enhancements`](https://github.com/feiyin91/openlauncher/tree/feat/dashboard-enhancements) — no extra permissions, no API key needed.
 
 ---
 
