@@ -7,6 +7,8 @@
   [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 </div>
 
+> **Fork notice:** this is Harvard Soo's independent fork of [dw2lam/openlauncher](https://github.com/dw2lam/openlauncher), the original project the sections below describe. Full credit to dw2lam for the foundation this builds on. Development here continues independently going forward rather than through upstream PRs, since the upstream repo hasn't seen maintainer activity in some time.
+
 ---
 
 ## 📖 Table of Contents
