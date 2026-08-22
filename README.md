@@ -39,7 +39,7 @@ Most aftermarket head units rely on wireless CarPlay or Android Auto for navigat
 
 - **Fully offline, always:** the widget grid itself, themes/personalization, Clock, Speedometer, Altimeter, Trip Meter, GPS Compass, Head Unit Vitals, Soundboard, Fuel Log, and GPS-based sunrise/sunset day-night switching. None of these make a network call.
 - **Needs a data or WiFi connection:** the Weather widget (calls a weather API) and the Location widget's place-name display (reverse-geocodes your GPS coordinates via the free Nominatim API). Both degrade gracefully — Weather hides itself rather than showing stale/wrong data when offline, and Location just shows raw coordinates instead of a place name.
-- The [voice assistant branch](https://github.com/feiyin91/openlauncher/tree/feat/gemini-voice-assistant) obviously needs a connection too, for the Gemini API calls — see that branch's own docs.
+- **This branch specifically** also needs a connection for the voice assistant's Gemini API calls (the wake word itself is fully offline — only the actual command parsing needs a network) — see [docs/VOICE_ASSISTANT.md](docs/VOICE_ASSISTANT.md) for the full picture.
 
 So: most of the dashboard works with zero signal, which is the common case for these head units. A couple of specific widgets don't, and now you know exactly which ones before you're relying on them.
 
