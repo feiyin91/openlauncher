@@ -47,7 +47,22 @@ So: most of the dashboard works with zero signal, which is the common case for t
 
 ## ✨ Current features
 
-*(Real screenshots from an actual running build are pending — the placeholder images from the original project have been removed rather than left showing an interface that no longer matches what this fork actually looks like.)*
+Real screenshots, taken directly off the head unit — location shown is swapped to "Singapore" in place of the actual GPS-resolved address, everything else is untouched. **One honest caveat:** the unit these were taken on runs the [voice assistant branch](https://github.com/feiyin91/openlauncher/tree/feat/gemini-voice-assistant), so the mic button and volume/Bluetooth/WiFi rail on the right edge belong to *that* branch, not this one — this branch (`feat/dashboard-enhancements`) is everything else you see here, without that rail.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/ignition-light.png" width="400" alt="Ignition theme, light mode — Now Playing and Weather widgets" /><br/><sub>Ignition — light mode</sub></td>
+    <td><img src="docs/screenshots/instrument-cluster-dark.png" width="400" alt="Instrument Cluster theme, dark mode" /><br/><sub>Instrument Cluster — dark mode</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/blueprint-dark.png" width="400" alt="Blueprint theme, dark mode" /><br/><sub>Blueprint — dark mode</sub></td>
+    <td><img src="docs/screenshots/plum-light.png" width="400" alt="Plum theme, light mode" /><br/><sub>Plum — light mode</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/cobalt-dark.png" width="400" alt="Cobalt theme, dark mode" /><br/><sub>Cobalt — dark mode</sub></td>
+    <td><img src="docs/screenshots/settings-theme-picker.png" width="400" alt="Settings screen showing the 8-theme picker and Sunset display mode" /><br/><sub>Theme picker, in Settings</sub></td>
+  </tr>
+</table>
 
 ### 🎨 8-theme dashboard system
 Eight built-in themes — Ignition, Amber, Cobalt, Verdigris, Plum, Blueprint, Circuit, Instrument — each with its own accent, background, and ink color defined for both day and night, auto-switching with sunrise/sunset. Beyond the presets, full manual control over accent color, background color/gradient, wallpaper (with adjustable dim), font weight, text scale, UI scale, and app font.
@@ -92,7 +107,6 @@ Explains key permissions (location, notification listener, draw-over-apps) befor
 
 - [ ] **Advanced color engine** — per-element hex control for every UI surface, to precisely match a specific dashboard's ambient lighting.
 - [ ] **Universal theming engine** — a standardized way to build, share, and install full visual themes.
-- [ ] Real screenshots of the current build, replacing the placeholder note above.
 
 ---
 
