@@ -1164,8 +1164,31 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             return
         }
         _voiceState.value = VoiceAssistantState.LISTENING
-        requestVoiceAudioFocus()
 
+        viewModelScope.launch {
+            // WakeWordService only notices this state flip on its next audio
+            // chunk, then tears its own AudioRecord down asynchronously (see
+            // its captureSession comment — release() returning doesn't mean
+            // the HAL has actually freed the mic on this chipset, especially
+            // for the VOICE_COMMUNICATION+AEC/NS stream it opens while music
+            // is playing). The wake-word path already waits this settle out
+            // before handing off; the manual mic button used to skip it and
+            // grab the mic mid-teardown, which on this hardware wedged the
+            // system recognizer outright — no onError, no onResults, just a
+            // dead session for a minute or two, with Spotify's audio focus
+            // never handed back in the meantime. Only needed on the first
+            // attempt — by the time a busy-retry runs, the mic has long since
+            // settled one way or another.
+            if (attempt == 0) delay(MIC_HANDOVER_SETTLE_MS)
+            requestVoiceAudioFocus()
+            startVoiceCommandFallbackListening(app, attempt)
+        }
+    }
+
+    /** How long to wait for WakeWordService to actually release the mic before grabbing it ourselves — mirrors WakeWordService.MIC_HANDOVER_SETTLE_MS. */
+    private val MIC_HANDOVER_SETTLE_MS = 400L
+
+    private fun startVoiceCommandFallbackListening(app: Application, attempt: Int) {
         speechRecognizer?.destroy()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(app).apply {
             setRecognitionListener(object : RecognitionListener {
