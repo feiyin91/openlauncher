@@ -808,7 +808,7 @@ fun HomeScreen(
         BluetoothPanel(
             accent      = accent,
             isDayMode   = isDayMode,
-            devices     = remember(bluetoothPanelOpen) { pairedBluetoothDeviceNames() },
+            pairedBluetoothDeviceNames = pairedBluetoothDeviceNames,
             onConnect   = onConnectBluetoothDevice,
             onDisconnect = onDisconnectBluetoothDevice,
             onDismiss   = onDismissBluetoothPanel,
@@ -970,7 +970,7 @@ private fun RailTile(
 private fun BluetoothPanel(
     accent: Color,
     isDayMode: Boolean,
-    devices: List<String>,
+    pairedBluetoothDeviceNames: () -> List<String>,
     onConnect: (String) -> Unit,
     onDisconnect: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -980,6 +980,22 @@ private fun BluetoothPanel(
     val panelBorder = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF1A1A1A)
     val labelColor  = if (isDayMode) Color(0xFF111111) else Color(0xFFEFEFEF)
     val subtleColor = if (isDayMode) Color(0xFF888888) else Color(0xFF666666)
+
+    // Was a one-shot remember(bluetoothPanelOpen) at the call site — but this
+    // dialog doesn't dismiss when "PAIR A DEVICE" launches system Bluetooth
+    // settings on top of it, so bluetoothPanelOpen never actually changes
+    // value across that round trip and the list never re-fetched a device
+    // paired there. Refresh on resume instead, same pattern SettingsScreen
+    // already uses for its own permission rows.
+    var devices by remember { mutableStateOf(pairedBluetoothDeviceNames()) }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) devices = pairedBluetoothDeviceNames()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
