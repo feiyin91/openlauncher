@@ -90,7 +90,16 @@ class TripTrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification())
+        // foregroundServiceType="location" (manifest) means this throws a
+        // SecurityException if location permission isn't currently held —
+        // the caller (MainActivity) now gates on that before ever starting
+        // this service, but START_STICKY means the OS itself can also
+        // restart this service later (e.g. after the process was killed
+        // under memory pressure) without going through that gate again. A
+        // permission revoked in between would otherwise crash the whole
+        // app from inside a callback the caller has no way to guard.
+        runCatching { startForeground(NOTIFICATION_ID, buildNotification()) }
+            .onFailure { return START_NOT_STICKY }
         runCatching {
             if (locationManager.allProviders.contains(LocationManager.GPS_PROVIDER)) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 3000L, 5f, locationListener)

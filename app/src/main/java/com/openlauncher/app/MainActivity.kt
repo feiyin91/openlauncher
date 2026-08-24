@@ -66,12 +66,34 @@ class MainActivity : ComponentActivity() {
         // Started once per process, independent of this Activity's own
         // lifecycle from here on — keeps accumulating today's driving
         // distance even while this launcher itself is backgrounded (Waze
-        // full-screen, etc.). No-ops safely (via its own runCatching) if
-        // location permission isn't granted yet.
-        runCatching {
-            androidx.core.content.ContextCompat.startForegroundService(
-                this, Intent(this, com.openlauncher.app.service.TripTrackingService::class.java)
-            )
+        // full-screen, etc.).
+        //
+        // The old comment here claimed this "no-ops safely via its own
+        // runCatching if location permission isn't granted yet" — that was
+        // wrong, and confirmed on-device as the real cause of a hard crash
+        // on every single launch (even a fresh install) before location
+        // permission is granted. This service is manifest-declared
+        // foregroundServiceType="location", and Android throws a
+        // SecurityException from inside startForeground() if that
+        // permission isn't already held — but that throw happens inside the
+        // service's own onStartCommand(), dispatched asynchronously by the
+        // OS, not synchronously inside this startForegroundService() call.
+        // A runCatching wrapped around the call site here literally cannot
+        // catch an exception thrown later, on a different dispatch, inside
+        // the service itself — hence "safely" was never actually true.
+        // Gated the same way WakeWordService already is below: only start
+        // if the permission is already held (a prior session), and also
+        // started from onComplete() once onboarding grants it fresh.
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this, Intent(this, com.openlauncher.app.service.TripTrackingService::class.java)
+                )
+            }
         }
 
         // Voice "go home" (LauncherViewModel.bringAppToForeground) needs the
@@ -243,6 +265,21 @@ class MainActivity : ComponentActivity() {
                             vm.updateSettings { copy(onboardingCompleted = true) }
                             // Start location updates immediately upon completion
                             vm.startLocationUpdates()
+                            // See the onCreate() comment on this same call —
+                            // gated on permission being held right now, since
+                            // onboarding may have been skipped ("SKIP FOR
+                            // NOW") rather than granted.
+                            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                                android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                runCatching {
+                                    androidx.core.content.ContextCompat.startForegroundService(
+                                        this, Intent(this, com.openlauncher.app.service.TripTrackingService::class.java)
+                                    )
+                                }
+                            }
                         }
                     )
                 } else {
