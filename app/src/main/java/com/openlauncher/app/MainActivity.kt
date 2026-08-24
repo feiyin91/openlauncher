@@ -306,6 +306,20 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                            // Same reasoning as TripTrackingService above — the
+                            // onCreate() check only covers a mic permission
+                            // already held from a prior session; onboarding
+                            // granting it fresh needs its own immediate start,
+                            // or the wake word stays silent until next app launch.
+                            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                runCatching {
+                                    androidx.core.content.ContextCompat.startForegroundService(
+                                        this, Intent(this, com.openlauncher.app.service.WakeWordService::class.java)
+                                    )
+                                }
+                            }
                         }
                     )
                 } else {

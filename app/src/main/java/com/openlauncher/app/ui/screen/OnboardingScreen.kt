@@ -34,6 +34,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.openlauncher.app.data.AppSettings
+import com.openlauncher.app.BuildConfig
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -48,6 +49,7 @@ fun OnboardingScreen(
     var currentStep by rememberSaveable { mutableStateOf(0) }
     var locationGranted by remember { mutableStateOf(false) }
     var mediaGranted by remember { mutableStateOf(false) }
+    var voiceGranted by remember { mutableStateOf(false) }
 
     val checkPermissions = {
         locationGranted = ContextCompat.checkSelfPermission(
@@ -60,6 +62,16 @@ fun OnboardingScreen(
             context.contentResolver, "enabled_notification_listeners"
         )
         mediaGranted = enabledListeners != null && enabledListeners.contains(context.packageName)
+
+        // BLUETOOTH_CONNECT only actually exists as a runtime permission from
+        // API 31 — treat it as satisfied below that, same pattern MainActivity
+        // already uses for the mic-button permission bundle.
+        val btOk = android.os.Build.VERSION.SDK_INT < 31 ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED
+        voiceGranted = btOk && ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -88,6 +100,13 @@ fun OnboardingScreen(
         if (granted) {
             currentStep = 2 // Auto-advance to next step
         }
+    }
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val btOk = android.os.Build.VERSION.SDK_INT < 31 || results[Manifest.permission.BLUETOOTH_CONNECT] == true
+        voiceGranted = btOk && results[Manifest.permission.RECORD_AUDIO] == true
     }
 
     Box(
@@ -150,11 +169,12 @@ fun OnboardingScreen(
                     StepItem(0, "Introduction", currentStep)
                     StepItem(1, "Location Services", currentStep)
                     StepItem(2, "Media Integration", currentStep)
-                    StepItem(3, "Ready to Go", currentStep)
+                    StepItem(3, "Voice Assistant", currentStep)
+                    StepItem(4, "Ready to Go", currentStep)
                 }
 
                 Text(
-                    text = "v0.0.5",
+                    text = "v${BuildConfig.VERSION_NAME}",
                     color = Color(0xFF333333),
                     fontSize = 9.sp,
                     letterSpacing = 1.sp
@@ -205,7 +225,15 @@ fun OnboardingScreen(
                                     context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                                 }
                             })
-                            3 -> FinalStep(accent, onSetDefault = {
+                            3 -> VoiceStep(accent, voiceGranted, onGrant = {
+                                val perms = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                                    arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.BLUETOOTH_CONNECT)
+                                } else {
+                                    arrayOf(Manifest.permission.RECORD_AUDIO)
+                                }
+                                voiceLauncher.launch(perms)
+                            })
+                            4 -> FinalStep(accent, onSetDefault = {
                                 runCatching {
                                     context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
                                 }
@@ -242,7 +270,8 @@ fun OnboardingScreen(
                         0 -> true
                         1 -> locationGranted
                         2 -> mediaGranted
-                        3 -> true
+                        3 -> voiceGranted
+                        4 -> true
                         else -> true
                     }
 
@@ -250,16 +279,17 @@ fun OnboardingScreen(
                         0 -> "GET STARTED"
                         1 -> if (locationGranted) "CONTINUE" else "SKIP FOR NOW"
                         2 -> if (mediaGranted) "CONTINUE" else "SKIP FOR NOW"
-                        3 -> "FINISH SETUP"
+                        3 -> if (voiceGranted) "CONTINUE" else "SKIP FOR NOW"
+                        4 -> "FINISH SETUP"
                         else -> "CONTINUE"
                     }
 
-                    val nextButtonIcon = if (currentStep == 3) Icons.Default.Check else Icons.Default.ArrowForward
+                    val nextButtonIcon = if (currentStep == 4) Icons.Default.Check else Icons.Default.ArrowForward
 
                     if (isPrimary) {
                         Button(
                             onClick = {
-                                if (currentStep < 3) {
+                                if (currentStep < 4) {
                                     currentStep++
                                 } else {
                                     onComplete()
@@ -353,9 +383,10 @@ private fun IntroStep(accent: Color) {
         Spacer(Modifier.height(8.dp))
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            BulletItem(Icons.Default.CloudOff, "100% Offline-Based", "No reliance on a mobile signal or network connection to function. Speedometer, compass telemetry, and altimeter operate entirely offline.")
+            BulletItem(Icons.Default.CloudOff, "Mostly Offline", "The dashboard, themes, speedometer, compass, and altimeter all work with zero signal. Weather, place names, and the voice assistant need a data connection — see Settings for exactly which is which.")
             BulletItem(Icons.Default.Palette, "Highly Customizable Dashboard", "Tailor color accents, background gradients, typography fonts, system units, and drag-and-drop to rearrange your tiles.")
             BulletItem(Icons.Default.VolumeUp, "Soundboard & Media Shortcuts", "Trigger custom soundboard sound effects, manage CarPlay & Android Auto shortcuts, and control active media players.")
+            BulletItem(Icons.Default.Mic, "Voice Assistant", "Say \"Hey Sebastian\" or tap the mic to control the dashboard, check weather, or ask a question — set up on the next screens.")
         }
     }
 }
@@ -493,6 +524,75 @@ private fun MediaStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
                 Icon(Icons.Default.VolumeUp, null, tint = Color.Black, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("ENABLE MEDIA LISTENER", color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(
+            text = "VOICE ASSISTANT",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = accent,
+            letterSpacing = 2.sp,
+            fontSize = 20.sp
+        )
+        Text(
+            text = "Say \"Hey Sebastian\" (fully offline — no connection needed to hear it) or tap the mic button to ask a question or give a command. Understanding what you say and replying needs a data connection; a paired-device voice command also needs Bluetooth access.",
+            color = Color(0xFFAAAAAA),
+            fontSize = 13.sp,
+            lineHeight = 20.sp
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (isGranted) Color(0xFF0F1E10) else Color(0xFF1E1010))
+                .padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = if (isGranted) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                    contentDescription = null,
+                    tint = if (isGranted) Color(0xFF44AA44) else Color(0xFFDD5555),
+                    modifier = Modifier.size(24.dp)
+                )
+                Column {
+                    Text(
+                        text = if (isGranted) "Microphone Access Granted" else "Microphone Access Required",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (isGranted) "Wake word and mic button are both active." else "Wake word and mic button will stay inactive.",
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        if (!isGranted) {
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onGrant,
+                shape = RoundedCornerShape(4.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accent),
+                modifier = Modifier.height(44.dp)
+            ) {
+                Icon(Icons.Default.Mic, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("GRANT ACCESS", color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
             }
         }
     }
