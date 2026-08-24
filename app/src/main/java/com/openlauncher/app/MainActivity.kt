@@ -410,7 +410,9 @@ class MainActivity : ComponentActivity() {
                                         availableVoices = availableVoices,
                                         ttsDebugInfo    = ttsDebugInfo,
                                         onPreviewVoice  = { name -> vm.previewVoice(name) },
-                                        onRetryTts      = { vm.ensureTts() }
+                                        onRetryTts      = { vm.ensureTts() },
+                                        hasLocationFix  = location != null,
+                                        hasMagnetometer = vm.hasMagnetometer
                                     )
                                 }
                             }

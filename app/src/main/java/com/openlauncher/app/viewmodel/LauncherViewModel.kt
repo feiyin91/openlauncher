@@ -594,6 +594,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     val compassBearing: StateFlow<Float> = locationMgr.bearing
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0f)
+    val hasAccelerometer: Boolean = locationMgr.hasAccelerometer
+    val hasMagnetometer: Boolean = locationMgr.hasMagnetometer
 
     // Re-evaluated every minute: a parked car produces no location updates
     // (minDistance filters), so AUTO mode must also flip on time alone.
@@ -603,7 +605,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         when (s.dayNightMode) {
             DayNightMode.DARK   -> false
             DayNightMode.LIGHT  -> true
-            DayNightMode.AUTO   -> if (loc != null) SunriseSunset.isDay(loc.latitude, loc.longitude) else false
+            // GPS fix can take a while to arrive (no AGPS without real
+            // internet — see the connectivity fix elsewhere in this file),
+            // and used to just force dark the whole time it's pending. A
+            // plain 7am-7pm clock check is a fine stand-in until the real
+            // sunrise/sunset time is available.
+            DayNightMode.AUTO   -> if (loc != null) SunriseSunset.isDay(loc.latitude, loc.longitude)
+                                   else java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) in 7..18
             DayNightMode.SYSTEM -> false // placeholder — overridden in MainActivity via isSystemInDarkTheme()
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
@@ -818,8 +826,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-            _isWifi.value = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            _isData.value = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+            // NET_CAPABILITY_INTERNET only means the network is *declared*
+            // capable of internet — a hotspot with no real backhaul still
+            // reports it. VALIDATED is the system's own connectivity check
+            // (it actually reached the internet), which is what "connected"
+            // should mean to the driver — confirmed on-device the WiFi tile
+            // read as connected on a hotspot with no working data.
+            val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            _isWifi.value = hasInternet && caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            _isData.value = hasInternet && caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
         } else {
             // activeNetwork requires API 23 — legacy path for Android 5.x head units
             @Suppress("DEPRECATION")
@@ -849,8 +864,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             .build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: android.net.Network, caps: NetworkCapabilities) {
-                _isWifi.value = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-                _isData.value = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                // See refreshConnectivity() — VALIDATED, not just declared-capable.
+                val hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                _isWifi.value = hasInternet && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                _isData.value = hasInternet && caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
             }
             override fun onLost(network: android.net.Network) {
                 refreshConnectivity() // a different transport may still be up
@@ -1188,13 +1205,55 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** How long to wait for WakeWordService to actually release the mic before grabbing it ourselves — mirrors WakeWordService.MIC_HANDOVER_SETTLE_MS. */
     private val MIC_HANDOVER_SETTLE_MS = 400L
 
+    /**
+     * Confirmed on-device: with no real internet (hotspot connected but
+     * unvalidated — see refreshConnectivity()), this ROM's recognition
+     * service never calls onError or onResults at all — it just sits there,
+     * silently waiting on a network call that's never coming, for 5-10
+     * minutes before whatever internal timeout it has finally gives up. That
+     * leaves the mic open and hearing nothing, and Spotify's audio focus
+     * held hostage, the whole time. Nothing client-side can fix the vendor
+     * recognizer itself, so cap our own wait instead — same "Didn't catch
+     * that" outcome the driver would eventually get anyway, just not a
+     * multi-minute wait for it.
+     */
+    private val RECOGNIZER_WATCHDOG_MS = 10_000L
+
     private fun startVoiceCommandFallbackListening(app: Application, attempt: Int) {
         speechRecognizer?.destroy()
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(app).apply {
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(app)
+        speechRecognizer = recognizer
+        viewModelScope.launch {
+            delay(RECOGNIZER_WATCHDOG_MS)
+            // If this is still the live recognizer and still listening, no
+            // callback ever fired — force the same cleanup onError would
+            // have done rather than leaving the session open indefinitely.
+            if (speechRecognizer === recognizer && _voiceState.value == VoiceAssistantState.LISTENING) {
+                recognizerRetryJob?.cancel()
+                runCatching { recognizer.stopListening() }
+                runCatching { recognizer.destroy() }
+                speechRecognizer = null
+                abandonVoiceAudioFocus()
+                _voiceState.value = VoiceAssistantState.ERROR
+                _voiceReply.value = "recognizer: no response (check internet connection)"
+                speak("Didn't catch that.")
+            }
+        }
+        // No logcat on this ROM (see the wake-word debug string for the same
+        // reasoning) — when onResults comes back blank, whether the mic ever
+        // actually picked up sound is otherwise a total guess. Tracked here
+        // instead of just discarded so a blank result can say which of "mic
+        // never got live" vs "picked up sound but couldn't transcribe it" —
+        // very different fixes (routing/contention vs. background noise).
+        var gotReady = false
+        var gotSpeechStart = false
+        var peakRms = -100f
+
+        recognizer.apply {
             setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onReadyForSpeech(params: Bundle?) { gotReady = true }
+                override fun onBeginningOfSpeech() { gotSpeechStart = true }
+                override fun onRmsChanged(rmsdB: Float) { peakRms = maxOf(peakRms, rmsdB) }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
                 override fun onError(error: Int) {
@@ -1236,6 +1295,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     if (text.isNullOrBlank()) {
                         _voiceState.value = VoiceAssistantState.ERROR
                         speak("Didn't catch that.")
+                        // Overwrites speak()'s own _voiceReply, same pattern
+                        // as the onError branch above.
+                        _voiceReply.value = "recognizer: blank result — ready:$gotReady speech:$gotSpeechStart peakRms:%.0f".format(peakRms)
                     } else {
                         _voiceTranscript.value = text
                         processVoiceCommand(text)

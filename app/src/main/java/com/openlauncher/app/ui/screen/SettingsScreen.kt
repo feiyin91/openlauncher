@@ -59,6 +59,8 @@ fun SettingsScreen(
     ttsDebugInfo: String = "",
     onPreviewVoice: (String) -> Unit = {},
     onRetryTts: () -> Unit = {},
+    hasLocationFix: Boolean = false,
+    hasMagnetometer: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -223,7 +225,13 @@ fun SettingsScreen(
             SettingsDivider()
             SettingsButton(
                 label    = "Location Access",
-                sublabel = if (hasLocation) "Granted — GPS, compass & weather active" else "Required for compass, speed & weather",
+                sublabel = when {
+                    !hasLocation      -> "Required for compass, speed & weather"
+                    !hasMagnetometer  -> "Granted — no compass sensor on this unit" +
+                                         (if (hasLocationFix) ", GPS fix OK" else ", no GPS fix yet")
+                    !hasLocationFix   -> "Granted — no GPS fix yet (weather/speed need one)"
+                    else              -> "Granted — GPS, compass & weather active"
+                },
                 icon     = if (hasLocation) Icons.Default.LocationOn else Icons.Default.LocationOff,
                 accent   = if (hasLocation) accent else Color(0xFF993333),
                 onClick  = {

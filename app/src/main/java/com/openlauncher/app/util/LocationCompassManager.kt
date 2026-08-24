@@ -28,6 +28,15 @@ class LocationCompassManager(context: Context) {
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private val sensorManager   = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
+    // Some budget head unit boards genuinely have no magnetometer chip — in
+    // which case the compass can never work off sensors at all, regardless
+    // of permissions or GPS, and the only bearing source left is the GPS
+    // movement-delta fallback in onLocationChanged (which needs a fix to be
+    // moving). Checked once here so that's distinguishable on-screen from
+    // "sensor exists but isn't reporting."
+    val hasAccelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
+    val hasMagnetometer  = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD) != null
+
     private val _location  = MutableStateFlow<LocationData?>(null)
     private val _bearing   = MutableStateFlow(0f)
     val location: StateFlow<LocationData?> = _location
@@ -118,13 +127,25 @@ class LocationCompassManager(context: Context) {
     }
 
     fun start() {
-        // Sensors
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
-        }
-        sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.let {
-            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
-        }
+        // Sensors — unlike the location providers below, these had no
+        // exception handling at all. A registerListener() call is normally
+        // as safe as the location providers are, which is exactly why it
+        // never had a guard — but "normally safe" stopped being true the
+        // moment it actually threw on-device and took the whole app down
+        // with it, uncaught, on every single build regardless of version.
+        // Whatever's actually wrong with this unit's sensor/location stack
+        // isn't something app code can fix — this just stops it from being
+        // able to crash the launcher entirely.
+        try {
+            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+                sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        } catch (_: Exception) {}
+        try {
+            sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.let {
+                sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        } catch (_: Exception) {}
 
         // Location — Robust offline-first registration
         // GPS Provider (Works 100% offline, sat-based)
