@@ -35,6 +35,23 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.openlauncher.app.data.AppSettings
 import com.openlauncher.app.BuildConfig
+import com.openlauncher.app.ui.theme.onAccentColor
+
+// Onboarding runs before the user has picked anything, on default settings —
+// rather than a look that depends on whatever that default happens to be, it
+// has its own fixed identity: the Instrument Cluster theme's light mode
+// (navy ink on cream), Harvard's favorite of the 8 presets.
+private val ObInk         = Color(0xFF1F2A44) // Instrument Cluster's light-mode accent — navy, deliberately dark for contrast on cream (see Theme.kt's onAccentColor / the CLAUDE.md note on this exact pattern)
+private val ObBg          = Color(0xFFF0E6D2) // Instrument Cluster's light-mode background
+private val ObPanelBg     = Color(0xFFE4D5AE) // deeper tint of the same cream for the branding rail
+private val ObDivider     = Color(0xFFD2BE8E)
+private val ObTextPrimary = Color(0xFF241C0E)
+private val ObTextBody    = Color(0xFF5C4F35)
+private val ObTextMuted   = Color(0xFF9C8D68)
+private val ObGrantedBg   = Color(0xFFDCEEDA)
+private val ObRequiredBg  = Color(0xFFF4DCDC)
+private val ObGreen       = Color(0xFF2E8B3D)
+private val ObRed         = Color(0xFFC24949)
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -43,6 +60,11 @@ fun OnboardingScreen(
     onComplete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Shadows the caller-supplied accent — see the file-level comment above.
+    // Every step composable below still just takes `accent: Color` as its own
+    // parameter, so this one line is the only place the fixed identity is set.
+    @Suppress("NAME_SHADOWING") val accent = ObInk
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -112,7 +134,7 @@ fun OnboardingScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF070707))
+            .background(ObBg)
     ) {
         // Aesthetic glowing background orb
         Box(
@@ -122,7 +144,7 @@ fun OnboardingScreen(
                 .offset(x = 100.dp, y = 100.dp)
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(accent.copy(alpha = 0.15f), Color.Transparent),
+                        colors = listOf(accent.copy(alpha = 0.12f), Color.Transparent),
                         radius = 600f
                     )
                 )
@@ -136,7 +158,7 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .weight(0.4f)
                     .fillMaxHeight()
-                    .background(Color(0xFF0F0F0F))
+                    .background(ObPanelBg)
                     .padding(32.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -152,13 +174,13 @@ fun OnboardingScreen(
                         text = "OPEN LAUNCHER",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = ObTextPrimary,
                         letterSpacing = 2.sp,
                         fontSize = 15.sp
                     )
                     Text(
                         text = "Designed for the dashboard",
-                        color = Color(0xFF666666),
+                        color = ObTextBody,
                         fontSize = 11.sp,
                         letterSpacing = 0.5.sp
                     )
@@ -175,7 +197,7 @@ fun OnboardingScreen(
 
                 Text(
                     text = "v${BuildConfig.VERSION_NAME}",
-                    color = Color(0xFF333333),
+                    color = ObTextMuted,
                     fontSize = 9.sp,
                     letterSpacing = 1.sp
                 )
@@ -186,7 +208,7 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(Color(0xFF1E1E1E))
+                    .background(ObDivider)
             )
 
             // ── Right content wizard ────────────────────────────────────────
@@ -257,9 +279,9 @@ fun OnboardingScreen(
                             shape = RoundedCornerShape(4.dp),
                             modifier = Modifier.height(44.dp)
                         ) {
-                            Icon(Icons.Default.ArrowBack, null, tint = Color(0xFF888888), modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ArrowBack, null, tint = ObTextBody, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("BACK", color = Color(0xFF888888), fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text("BACK", color = ObTextBody, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         }
                     } else {
                         Spacer(Modifier.width(1.dp))
@@ -287,6 +309,7 @@ fun OnboardingScreen(
                     val nextButtonIcon = if (currentStep == 4) Icons.Default.Check else Icons.Default.ArrowForward
 
                     if (isPrimary) {
+                        val onAccent = onAccentColor(accent)
                         Button(
                             onClick = {
                                 if (currentStep < 4) {
@@ -299,9 +322,9 @@ fun OnboardingScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = accent),
                             modifier = Modifier.height(44.dp)
                         ) {
-                            Text(nextButtonLabel, color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+                            Text(nextButtonLabel, color = onAccent, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
                             Spacer(Modifier.width(8.dp))
-                            Icon(nextButtonIcon, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Icon(nextButtonIcon, null, tint = onAccent, modifier = Modifier.size(16.dp))
                         }
                     } else {
                         OutlinedButton(
@@ -310,12 +333,12 @@ fun OnboardingScreen(
                             },
                             shape = RoundedCornerShape(4.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.5f)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ObTextPrimary),
                             modifier = Modifier.height(44.dp)
                         ) {
-                            Text(nextButtonLabel, color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+                            Text(nextButtonLabel, color = ObTextPrimary, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
                             Spacer(Modifier.width(8.dp))
-                            Icon(nextButtonIcon, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Icon(nextButtonIcon, null, tint = ObTextPrimary, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -329,9 +352,9 @@ private fun StepItem(stepIndex: Int, title: String, currentStep: Int) {
     val active = stepIndex == currentStep
     val completed = stepIndex < currentStep
     val tint = when {
-        active -> MaterialTheme.colorScheme.primary
-        completed -> Color(0xFF44AA44)
-        else -> Color(0xFF333333)
+        active -> ObInk
+        completed -> ObGreen
+        else -> ObTextMuted
     }
 
     Row(
@@ -355,7 +378,7 @@ private fun StepItem(stepIndex: Int, title: String, currentStep: Int) {
         Text(
             text = title,
             fontSize = 11.sp,
-            color = if (active) Color.White else Color(0xFF666666),
+            color = if (active) ObTextPrimary else ObTextMuted,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
             letterSpacing = 0.5.sp
         )
@@ -375,7 +398,7 @@ private fun IntroStep(accent: Color) {
         )
         Text(
             text = "A clean, modern landscape dashboard designed to be the ultimate companion for your car's screen.",
-            color = Color(0xFFAAAAAA),
+            color = ObTextBody,
             fontSize = 13.sp,
             lineHeight = 20.sp
         )
@@ -404,7 +427,7 @@ private fun LocationStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit)
         )
         Text(
             text = "To compute your real-time speed, compass bearing, altitude telemetry, and update local weather conditions, Open Launcher requires high-precision GPS services.",
-            color = Color(0xFFAAAAAA),
+            color = ObTextBody,
             fontSize = 13.sp,
             lineHeight = 20.sp
         )
@@ -415,7 +438,7 @@ private fun LocationStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit)
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
-                .background(if (isGranted) Color(0xFF0F1E10) else Color(0xFF1E1010))
+                .background(if (isGranted) ObGrantedBg else ObRequiredBg)
                 .padding(16.dp)
         ) {
             Row(
@@ -425,19 +448,19 @@ private fun LocationStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit)
                 Icon(
                     imageVector = if (isGranted) Icons.Default.CheckCircle else Icons.Default.Cancel,
                     contentDescription = null,
-                    tint = if (isGranted) Color(0xFF44AA44) else Color(0xFFDD5555),
+                    tint = if (isGranted) ObGreen else ObRed,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
                     Text(
                         text = if (isGranted) "Permission Granted" else "Permission Required",
-                        color = Color.White,
+                        color = ObTextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = if (isGranted) "GPS telemetry is active and ready." else "Telemetry is currently disabled.",
-                        color = Color(0xFF888888),
+                        color = ObTextBody,
                         fontSize = 11.sp
                     )
                 }
@@ -452,9 +475,10 @@ private fun LocationStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit)
                 colors = ButtonDefaults.buttonColors(containerColor = accent),
                 modifier = Modifier.height(44.dp)
             ) {
-                Icon(Icons.Default.LocationOn, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                val onAccent = onAccentColor(accent)
+                Icon(Icons.Default.LocationOn, null, tint = onAccent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("GRANT ACCESS", color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+                Text("GRANT ACCESS", color = onAccent, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
             }
         }
     }
@@ -473,7 +497,7 @@ private fun MediaStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
         )
         Text(
             text = "To capture live album art, track info, progress bars, and provide playback control from your dashboard cards, Open Launcher listens to active media notifications.",
-            color = Color(0xFFAAAAAA),
+            color = ObTextBody,
             fontSize = 13.sp,
             lineHeight = 20.sp
         )
@@ -484,7 +508,7 @@ private fun MediaStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
-                .background(if (isGranted) Color(0xFF0F1E10) else Color(0xFF1E1010))
+                .background(if (isGranted) ObGrantedBg else ObRequiredBg)
                 .padding(16.dp)
         ) {
             Row(
@@ -494,19 +518,19 @@ private fun MediaStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
                 Icon(
                     imageVector = if (isGranted) Icons.Default.CheckCircle else Icons.Default.Cancel,
                     contentDescription = null,
-                    tint = if (isGranted) Color(0xFF44AA44) else Color(0xFFDD5555),
+                    tint = if (isGranted) ObGreen else ObRed,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
                     Text(
                         text = if (isGranted) "Notification Access Granted" else "Notification Access Required",
-                        color = Color.White,
+                        color = ObTextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = if (isGranted) "Music player widget is connected." else "Now Playing dashboard will remain inactive.",
-                        color = Color(0xFF888888),
+                        color = ObTextBody,
                         fontSize = 11.sp
                     )
                 }
@@ -521,9 +545,10 @@ private fun MediaStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = accent),
                 modifier = Modifier.height(44.dp)
             ) {
-                Icon(Icons.Default.VolumeUp, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                val onAccent = onAccentColor(accent)
+                Icon(Icons.Default.VolumeUp, null, tint = onAccent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("ENABLE MEDIA LISTENER", color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+                Text("ENABLE MEDIA LISTENER", color = onAccent, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
             }
         }
     }
@@ -542,7 +567,7 @@ private fun VoiceStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
         )
         Text(
             text = "Say \"Hey Sebastian\" (fully offline — no connection needed to hear it) or tap the mic button to ask a question or give a command. Understanding what you say and replying needs a data connection; a paired-device voice command also needs Bluetooth access.",
-            color = Color(0xFFAAAAAA),
+            color = ObTextBody,
             fontSize = 13.sp,
             lineHeight = 20.sp
         )
@@ -553,7 +578,7 @@ private fun VoiceStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
-                .background(if (isGranted) Color(0xFF0F1E10) else Color(0xFF1E1010))
+                .background(if (isGranted) ObGrantedBg else ObRequiredBg)
                 .padding(16.dp)
         ) {
             Row(
@@ -563,19 +588,19 @@ private fun VoiceStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
                 Icon(
                     imageVector = if (isGranted) Icons.Default.CheckCircle else Icons.Default.Cancel,
                     contentDescription = null,
-                    tint = if (isGranted) Color(0xFF44AA44) else Color(0xFFDD5555),
+                    tint = if (isGranted) ObGreen else ObRed,
                     modifier = Modifier.size(24.dp)
                 )
                 Column {
                     Text(
                         text = if (isGranted) "Microphone Access Granted" else "Microphone Access Required",
-                        color = Color.White,
+                        color = ObTextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = if (isGranted) "Wake word and mic button are both active." else "Wake word and mic button will stay inactive.",
-                        color = Color(0xFF888888),
+                        color = ObTextBody,
                         fontSize = 11.sp
                     )
                 }
@@ -590,9 +615,10 @@ private fun VoiceStep(accent: Color, isGranted: Boolean, onGrant: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = accent),
                 modifier = Modifier.height(44.dp)
             ) {
-                Icon(Icons.Default.Mic, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                val onAccent = onAccentColor(accent)
+                Icon(Icons.Default.Mic, null, tint = onAccent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("GRANT ACCESS", color = Color.Black, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+                Text("GRANT ACCESS", color = onAccent, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
             }
         }
     }
@@ -611,7 +637,7 @@ private fun FinalStep(accent: Color, onSetDefault: () -> Unit) {
         )
         Text(
             text = "You are all set up and ready to go. You can set Open Launcher as your default home app so it launches automatically whenever you start your vehicle.",
-            color = Color(0xFFAAAAAA),
+            color = ObTextBody,
             fontSize = 13.sp,
             lineHeight = 20.sp
         )
@@ -621,12 +647,12 @@ private fun FinalStep(accent: Color, onSetDefault: () -> Unit) {
         Button(
             onClick = onSetDefault,
             shape = RoundedCornerShape(4.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E1E)),
+            colors = ButtonDefaults.buttonColors(containerColor = ObTextPrimary),
             modifier = Modifier.height(44.dp)
         ) {
-            Icon(Icons.Default.Home, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Home, null, tint = ObBg, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("SET AS DEFAULT", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
+            Text("SET AS DEFAULT", color = ObBg, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontSize = 12.sp)
         }
     }
 }
@@ -637,10 +663,10 @@ private fun BulletItem(icon: ImageVector, title: String, desc: String) {
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(18.dp).padding(top = 2.dp))
+        Icon(icon, null, tint = ObInk.copy(alpha = 0.7f), modifier = Modifier.size(18.dp).padding(top = 2.dp))
         Column {
-            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-            Text(desc, color = Color(0xFF888888), fontSize = 11.sp, lineHeight = 16.sp)
+            Text(title, color = ObTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Text(desc, color = ObTextBody, fontSize = 11.sp, lineHeight = 16.sp)
         }
     }
 }
