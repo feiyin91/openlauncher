@@ -61,6 +61,7 @@ fun SettingsScreen(
     onRetryTts: () -> Unit = {},
     hasLocationFix: Boolean = false,
     hasMagnetometer: Boolean = true,
+    mcuMediaJsonDebug: String = "",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -390,6 +391,23 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // ── Hardware bridge (debug) ────────────────────────────────────────────
+        // Temporary — checking whether this unit's vendor MCU bridge (already
+        // used for the FM radio widget) also carries Bluetooth A2DP track
+        // metadata while music plays through the unit's separate hands-free
+        // Bluetooth chip. No logcat on this ROM, so this is the only way to
+        // actually see the field. Remove once answered either way.
+        if (mcuMediaJsonDebug.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            SettingsSection("Hardware Bridge (debug)") {
+                SettingsRow(
+                    label    = "SYS_MEDIA_INFO_JSON",
+                    sublabel = mcuMediaJsonDebug,
+                    icon     = Icons.Default.BugReport
+                ) {}
             }
         }
 

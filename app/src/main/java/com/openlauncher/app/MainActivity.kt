@@ -138,6 +138,7 @@ class MainActivity : ComponentActivity() {
             val isData      by vm.isData.collectAsStateWithLifecycle()
             val isDayModeVM by vm.isDayMode.collectAsStateWithLifecycle()
             val hardwareRadio by vm.hardwareRadio.collectAsStateWithLifecycle()
+            val mcuMediaJsonDebug by vm.mcuMediaJsonDebug.collectAsStateWithLifecycle()
             val systemIsDark = isSystemInDarkTheme()
             val isDayMode = if (settings.dayNightMode == DayNightMode.SYSTEM) !systemIsDark else isDayModeVM
             val pickerSlot      by vm.shortcutPickerSlot.collectAsStateWithLifecycle()
@@ -467,7 +468,8 @@ class MainActivity : ComponentActivity() {
                                         onPreviewVoice  = { name -> vm.previewVoice(name) },
                                         onRetryTts      = { vm.ensureTts() },
                                         hasLocationFix  = location != null,
-                                        hasMagnetometer = vm.hasMagnetometer
+                                        hasMagnetometer = vm.hasMagnetometer,
+                                        mcuMediaJsonDebug = mcuMediaJsonDebug
                                     )
                                 }
                             }

@@ -682,12 +682,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private var radioObserver: ContentObserver? = null
 
+    // Named "MEDIA", not "RADIO" — worth checking on-device whether this
+    // vendor MCU bridge also carries Bluetooth A2DP track metadata (title/
+    // artist) while music plays through the unit's separate hands-free
+    // Bluetooth chip, which Android's own media session APIs can never see
+    // (that audio path never touches the Android SoC at all). Only
+    // mediaTitle is actually parsed today (see parseRadioJson) — this is
+    // the raw JSON so the full field set is visible with no logcat access
+    // on this ROM. Shown in Settings; safe to remove once answered either way.
+    private val _mcuMediaJsonDebug = MutableStateFlow("not read yet")
+    val mcuMediaJsonDebug: StateFlow<String> = _mcuMediaJsonDebug
+
+    private fun refreshMcuMediaDebug() {
+        _mcuMediaJsonDebug.value = runCatching {
+            AndroidSettings.Global.getString(
+                getApplication<Application>().contentResolver, "SYS_MEDIA_INFO_JSON"
+            ) ?: "(null)"
+        }.getOrElse { "read failed: ${it.message}" }
+    }
+
     private fun startHardwareRadioObserver() {
         if (radioObserver != null) return
         _mcuRadio.value = parseRadioJson()
+        refreshMcuMediaDebug()
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 _mcuRadio.value = parseRadioJson()
+                refreshMcuMediaDebug()
             }
         }
         getApplication<Application>().contentResolver.registerContentObserver(
