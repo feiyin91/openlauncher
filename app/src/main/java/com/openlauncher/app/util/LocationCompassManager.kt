@@ -118,13 +118,24 @@ class LocationCompassManager(context: Context) {
     }
 
     fun start() {
-        // Sensors
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
-        }
-        sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.let {
-            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
-        }
+        // Sensors — unlike the location providers below, these had no
+        // exception handling at all. Confirmed on-device: the app was
+        // crashing hard on every APK version (even previously-working ones,
+        // even fresh installs) at the exact point onboarding hands off into
+        // the home screen, which is where this runs. Whatever's actually
+        // wrong with this unit's sensor/location stack isn't something app
+        // code can fix — this just stops it from taking the whole launcher
+        // down with it.
+        try {
+            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+                sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        } catch (_: Exception) {}
+        try {
+            sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.let {
+                sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+            }
+        } catch (_: Exception) {}
 
         // Location — Robust offline-first registration
         // GPS Provider (Works 100% offline, sat-based)
