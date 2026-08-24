@@ -126,6 +126,15 @@ fun HomeScreen(
     onPrev: () -> Unit,
     onLaunchCarPlay: () -> Unit,
     onLaunchAndroidAuto: () -> Unit,
+    // These two slots are frequently repurposed for something other than
+    // real CarPlay/Android Auto (a music app, a vendor app for hardware
+    // Android's own APIs can't reach — see the Bluetooth panel) — showing
+    // the assigned app's own icon/name instead of the fixed generic ones
+    // makes that obvious at a glance instead of confusingly mislabeled.
+    carPlayAppLabel: String? = null,
+    carPlayAppIcon: android.graphics.drawable.Drawable? = null,
+    androidAutoAppLabel: String? = null,
+    androidAutoAppIcon: android.graphics.drawable.Drawable? = null,
     onAssignCarPlay: () -> Unit,
     onAssignAndroidAuto: () -> Unit,
     onClearCarPlay: () -> Unit,
@@ -572,6 +581,10 @@ fun HomeScreen(
                             accent              = accent,
                             carPlayPackage      = settings.carPlayPackage,
                             androidAutoPackage  = settings.androidAutoPackage,
+                            carPlayAppLabel     = carPlayAppLabel,
+                            carPlayAppIcon      = carPlayAppIcon,
+                            androidAutoAppLabel = androidAutoAppLabel,
+                            androidAutoAppIcon  = androidAutoAppIcon,
                             onPlayPause         = onPlayPause,
                             onNext              = onNext,
                             onPrev              = onPrev,
@@ -722,6 +735,8 @@ fun HomeScreen(
             locationDetailLevel = settings.locationDetailLevel,
             carPlayPackage      = settings.carPlayPackage,
             androidAutoPackage  = settings.androidAutoPackage,
+            carPlayAppLabel     = carPlayAppLabel,
+            androidAutoAppLabel = androidAutoAppLabel,
             pipAppPackage       = settings.pipAppPackage,
             use24HourFormat     = settings.use24HourFormat,
             showSunriseSunset   = settings.showSunriseSunset,
@@ -1362,6 +1377,8 @@ private fun WidgetContextMenu(
     locationDetailLevel: com.openlauncher.app.data.LocationDetailLevel = com.openlauncher.app.data.LocationDetailLevel.NEIGHBORHOOD,
     carPlayPackage: String = "",
     androidAutoPackage: String = "",
+    carPlayAppLabel: String? = null,
+    androidAutoAppLabel: String? = null,
     pipAppPackage: String = "",
     use24HourFormat: Boolean = true,
     showSunriseSunset: Boolean = true,
@@ -1521,16 +1538,22 @@ private fun WidgetContextMenu(
                     isDayMode = isDayMode
                 )
                 HorizontalDivider(color = menuDivider)
-                ContextRow("ASSIGN CARPLAY APP",      Icons.Default.PhoneAndroid,  accent, onAssignCarPlay, isDayMode = isDayMode)
+                ContextRow(
+                    if (carPlayPackage.isEmpty()) "ASSIGN CARPLAY SLOT" else "REASSIGN CARPLAY SLOT (${carPlayAppLabel ?: "?"})",
+                    Icons.Default.PhoneAndroid, accent, onAssignCarPlay, isDayMode = isDayMode
+                )
                 if (carPlayPackage.isNotEmpty()) {
                     HorizontalDivider(color = menuDivider)
-                    ContextRow("CLEAR CARPLAY APP", Icons.Default.PhoneAndroid, Color(0xFF884444), onClearCarPlay, isDayMode = isDayMode)
+                    ContextRow("CLEAR CARPLAY SLOT (${carPlayAppLabel ?: "?"})", Icons.Default.PhoneAndroid, Color(0xFF884444), onClearCarPlay, isDayMode = isDayMode)
                 }
                 HorizontalDivider(color = menuDivider)
-                ContextRow("ASSIGN ANDROID AUTO APP", Icons.Default.DirectionsCar, accent, onAssignAndroidAuto, isDayMode = isDayMode)
+                ContextRow(
+                    if (androidAutoPackage.isEmpty()) "ASSIGN ANDROID AUTO SLOT" else "REASSIGN ANDROID AUTO SLOT (${androidAutoAppLabel ?: "?"})",
+                    Icons.Default.DirectionsCar, accent, onAssignAndroidAuto, isDayMode = isDayMode
+                )
                 if (androidAutoPackage.isNotEmpty()) {
                     HorizontalDivider(color = menuDivider)
-                    ContextRow("CLEAR ANDROID AUTO APP", Icons.Default.DirectionsCar, Color(0xFF884444), onClearAndroidAuto, isDayMode = isDayMode)
+                    ContextRow("CLEAR ANDROID AUTO SLOT (${androidAutoAppLabel ?: "?"})", Icons.Default.DirectionsCar, Color(0xFF884444), onClearAndroidAuto, isDayMode = isDayMode)
                 }
             }
 

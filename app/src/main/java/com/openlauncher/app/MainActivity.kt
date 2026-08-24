@@ -374,7 +374,17 @@ class MainActivity : ComponentActivity() {
                                 label    = "pane_transition"
                             ) { destination ->
                                 when (destination) {
-                                    NavDestination.HOME -> HomeScreen(
+                                    NavDestination.HOME -> {
+                                    // These two slots are frequently repurposed for
+                                    // something other than real CarPlay/Android Auto
+                                    // (e.g. Spotify, or a vendor app for hardware
+                                    // Android's own APIs can't reach) — resolving the
+                                    // assigned app's own name/icon here, once, lets
+                                    // both the widget and its edit menu show what's
+                                    // actually linked instead of a fixed generic label.
+                                    val carPlayAppInfo = apps.find { it.packageName == settings.carPlayPackage }
+                                    val androidAutoAppInfo = apps.find { it.packageName == settings.androidAutoPackage }
+                                    HomeScreen(
                                         settings            = settings,
                                         weather             = weather,
                                         nowPlaying          = nowPlaying,
@@ -390,6 +400,10 @@ class MainActivity : ComponentActivity() {
                                         onPrev              = vm::skipPrev,
                                         onLaunchCarPlay     = { vm.launchApp(settings.carPlayPackage) },
                                         onLaunchAndroidAuto = { vm.launchApp(settings.androidAutoPackage) },
+                                        carPlayAppLabel     = carPlayAppInfo?.appName,
+                                        carPlayAppIcon      = carPlayAppInfo?.icon,
+                                        androidAutoAppLabel = androidAutoAppInfo?.appName,
+                                        androidAutoAppIcon  = androidAutoAppInfo?.icon,
                                         onAssignCarPlay     = { vm.startCarPlayPicker() },
                                         onAssignAndroidAuto = { vm.startAndroidAutoPicker() },
                                         onClearCarPlay      = { vm.clearCarPlayApp() },
@@ -448,6 +462,7 @@ class MainActivity : ComponentActivity() {
                                         onDisconnectBluetoothDevice = { name -> vm.setBluetoothDeviceConnected(name, false) },
                                         onOpenSystemBluetoothSettings = onOpenSystemBluetoothSettings
                                     )
+                                    }
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(
                                         apps                = apps,

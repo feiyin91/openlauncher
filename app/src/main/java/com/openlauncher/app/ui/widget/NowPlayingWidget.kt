@@ -53,6 +53,10 @@ fun NowPlayingWidget(
     accent: Color,
     carPlayPackage: String,
     androidAutoPackage: String,
+    carPlayAppLabel: String? = null,
+    carPlayAppIcon: android.graphics.drawable.Drawable? = null,
+    androidAutoAppLabel: String? = null,
+    androidAutoAppIcon: android.graphics.drawable.Drawable? = null,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
@@ -129,6 +133,10 @@ fun NowPlayingWidget(
                 isConnected = isConnected,
                 hasCarPlay = hasCarPlay,
                 hasAutoApp = hasAutoApp,
+                carPlayAppLabel = carPlayAppLabel,
+                carPlayAppIcon = carPlayAppIcon,
+                androidAutoAppLabel = androidAutoAppLabel,
+                androidAutoAppIcon = androidAutoAppIcon,
                 onPlayPause = onPlayPause,
                 onNext = onNext,
                 onPrev = onPrev,
@@ -567,6 +575,10 @@ private fun StandardMinimalPlayer(
     isConnected: Boolean,
     hasCarPlay: Boolean,
     hasAutoApp: Boolean,
+    carPlayAppLabel: String?,
+    carPlayAppIcon: android.graphics.drawable.Drawable?,
+    androidAutoAppLabel: String?,
+    androidAutoAppIcon: android.graphics.drawable.Drawable?,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
@@ -607,8 +619,20 @@ private fun StandardMinimalPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(Icons.Default.PhoneAndroid, null, tint = accent.copy(alpha = 0.7f), modifier = Modifier.size(28.dp))
-                                    Text("CARPLAY", color = accent.copy(alpha = 0.6f), fontSize = 8.sp, letterSpacing = 2.sp)
+                                    if (carPlayAppIcon != null) {
+                                        Image(
+                                            bitmap = remember(carPlayAppIcon) { carPlayAppIcon.toBitmap().asImageBitmap() },
+                                            contentDescription = null,
+                                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp))
+                                        )
+                                    } else {
+                                        Icon(Icons.Default.PhoneAndroid, null, tint = accent.copy(alpha = 0.7f), modifier = Modifier.size(28.dp))
+                                    }
+                                    Text(
+                                        (carPlayAppLabel ?: "CARPLAY").uppercase(),
+                                        color = accent.copy(alpha = 0.6f), fontSize = 8.sp, letterSpacing = 2.sp,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
@@ -630,8 +654,20 @@ private fun StandardMinimalPlayer(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(Icons.Default.DirectionsCar, null, tint = accent.copy(alpha = 0.7f), modifier = Modifier.size(28.dp))
-                                    Text("ANDROID AUTO", color = accent.copy(alpha = 0.6f), fontSize = 8.sp, letterSpacing = 2.sp)
+                                    if (androidAutoAppIcon != null) {
+                                        Image(
+                                            bitmap = remember(androidAutoAppIcon) { androidAutoAppIcon.toBitmap().asImageBitmap() },
+                                            contentDescription = null,
+                                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp))
+                                        )
+                                    } else {
+                                        Icon(Icons.Default.DirectionsCar, null, tint = accent.copy(alpha = 0.7f), modifier = Modifier.size(28.dp))
+                                    }
+                                    Text(
+                                        (androidAutoAppLabel ?: "ANDROID AUTO").uppercase(),
+                                        color = accent.copy(alpha = 0.6f), fontSize = 8.sp, letterSpacing = 2.sp,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
