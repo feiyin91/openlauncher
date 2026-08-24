@@ -34,6 +34,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.openlauncher.app.data.AppSettings
+import com.openlauncher.app.BuildConfig
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -154,7 +155,7 @@ fun OnboardingScreen(
                 }
 
                 Text(
-                    text = "v0.0.5",
+                    text = "v${BuildConfig.VERSION_NAME}",
                     color = Color(0xFF333333),
                     fontSize = 9.sp,
                     letterSpacing = 1.sp
@@ -353,7 +354,7 @@ private fun IntroStep(accent: Color) {
         Spacer(Modifier.height(8.dp))
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            BulletItem(Icons.Default.CloudOff, "100% Offline-Based", "No reliance on a mobile signal or network connection to function. Speedometer, compass telemetry, and altimeter operate entirely offline.")
+            BulletItem(Icons.Default.CloudOff, "Mostly Offline", "The dashboard, themes, speedometer, compass, and altimeter all work with zero signal. Weather and place names need a data connection — see Settings for exactly which is which.")
             BulletItem(Icons.Default.Palette, "Highly Customizable Dashboard", "Tailor color accents, background gradients, typography fonts, system units, and drag-and-drop to rearrange your tiles.")
             BulletItem(Icons.Default.VolumeUp, "Soundboard & Media Shortcuts", "Trigger custom soundboard sound effects, manage CarPlay & Android Auto shortcuts, and control active media players.")
         }
