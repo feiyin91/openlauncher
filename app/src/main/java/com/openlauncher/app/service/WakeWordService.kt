@@ -69,7 +69,10 @@ class WakeWordService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        // Same class of bug found and fixed in TripTrackingService today —
+        // a Service.onCreate() exception is dispatched by the OS, outside
+        // any try/catch the caller wrapped around startForegroundService().
+        runCatching { createNotificationChannel() }
         // Loading the ONNX sessions can take a moment on this 2GB device —
         // do it once here rather than per-chunk.
         engine = runCatching { WakeWordEngine(applicationContext) }
@@ -78,7 +81,8 @@ class WakeWordService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification())
+        runCatching { startForeground(NOTIFICATION_ID, buildNotification()) }
+            .onFailure { return START_NOT_STICKY }
         startListenLoop()
         return START_STICKY
     }

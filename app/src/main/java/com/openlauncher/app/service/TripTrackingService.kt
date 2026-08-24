@@ -78,13 +78,32 @@ class TripTrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        settingsRepo = SettingsRepository(applicationContext)
-        createNotificationChannel()
+        // Confirmed on-device: the permission-gate fix on the caller side
+        // (MainActivity) wasn't the whole story — this entire block had zero
+        // exception handling, and a Service's onCreate() runs on a Binder
+        // dispatch the caller's own runCatching around startForegroundService()
+        // can never see, let alone catch. Same failure class as onStartCommand
+        // below, different call.
+        runCatching {
+            locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            settingsRepo = SettingsRepository(applicationContext)
+            createNotificationChannel()
+        }.onFailure {
+            // Without a LocationManager/SettingsRepository there's nothing
+            // useful this service can do — stop rather than limp along and
+            // NPE on first location callback.
+            stopSelf()
+            return
+        }
         scope.launch {
-            val initial = settingsRepo.settingsFlow.first()
-            localDayKey = initial.tripDayKey
-            localTotalKm = initial.tripDayDistanceKm
+            runCatching {
+                val initial = settingsRepo.settingsFlow.first()
+                localDayKey = initial.tripDayKey
+                localTotalKm = initial.tripDayDistanceKm
+            }
+            // Seeded either way — falling back to today/zero rather than
+            // leaving accumulate() permanently blocked (seeded stays false
+            // forever) just because the one-time DataStore read failed.
             seeded = true
         }
     }
