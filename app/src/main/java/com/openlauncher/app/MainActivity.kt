@@ -217,6 +217,23 @@ class MainActivity : ComponentActivity() {
             }
             var wifiPanelOpen by remember { mutableStateOf(false) }
 
+            // BluetoothPanel only manages already-paired devices (connect/
+            // disconnect) — actually pairing a new one still has to go
+            // through the system's own Bluetooth settings screen. Unlike
+            // WiFi, there's no Settings.Panel API for Bluetooth at all (only
+            // ACTION_WIFI/NFC/INTERNET_CONNECTIVITY/VOLUME exist), so this is
+            // just the plain settings intent. Confirmed on-device this
+            // unit's vendor Settings app doesn't surface a Bluetooth menu
+            // item anywhere, so a plain "go find it yourself" message left
+            // no real way in — firing the intent directly can still reach
+            // the underlying system screen even when the vendor's own
+            // Settings app doesn't link to it.
+            val onOpenSystemBluetoothSettings: () -> Unit = {
+                runCatching {
+                    startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
+
             // A preset themeId overrides the manually-picked accent/background/font
             // colors below; "custom" (or an unrecognized id) falls through to those.
             val resolvedTheme  = com.openlauncher.app.data.resolveDashboardTheme(settings.themeId, isDayMode)
@@ -418,7 +435,8 @@ class MainActivity : ComponentActivity() {
                                         onDismissBluetoothPanel  = { bluetoothPanelOpen = false },
                                         pairedBluetoothDeviceNames = { vm.pairedBluetoothDeviceNames() },
                                         onConnectBluetoothDevice  = { name -> vm.setBluetoothDeviceConnected(name, true) },
-                                        onDisconnectBluetoothDevice = { name -> vm.setBluetoothDeviceConnected(name, false) }
+                                        onDisconnectBluetoothDevice = { name -> vm.setBluetoothDeviceConnected(name, false) },
+                                        onOpenSystemBluetoothSettings = onOpenSystemBluetoothSettings
                                     )
 
                                     NavDestination.APP_LIBRARY -> AppLibraryScreen(

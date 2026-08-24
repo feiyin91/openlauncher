@@ -166,6 +166,7 @@ fun HomeScreen(
     pairedBluetoothDeviceNames: () -> List<String> = { emptyList() },
     onConnectBluetoothDevice: (String) -> Unit = {},
     onDisconnectBluetoothDevice: (String) -> Unit = {},
+    onOpenSystemBluetoothSettings: () -> Unit = {}, // pairing itself has no in-app equivalent — see BluetoothPanel
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -810,7 +811,8 @@ fun HomeScreen(
             devices     = remember(bluetoothPanelOpen) { pairedBluetoothDeviceNames() },
             onConnect   = onConnectBluetoothDevice,
             onDisconnect = onDisconnectBluetoothDevice,
-            onDismiss   = onDismissBluetoothPanel
+            onDismiss   = onDismissBluetoothPanel,
+            onOpenSystemSettings = onOpenSystemBluetoothSettings
         )
     }
 }
@@ -971,7 +973,8 @@ private fun BluetoothPanel(
     devices: List<String>,
     onConnect: (String) -> Unit,
     onDisconnect: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenSystemSettings: () -> Unit = {}
 ) {
     val panelBg     = if (isDayMode) Color(0xFFFFFFFF) else Color(0xFF0E0E0E)
     val panelBorder = if (isDayMode) Color(0xFFCCCCCC) else Color(0xFF1A1A1A)
@@ -1022,10 +1025,11 @@ private fun BluetoothPanel(
                 Spacer(Modifier.height(16.dp))
                 if (devices.isEmpty()) {
                     Text(
-                        text     = "No paired devices. Pair one from system Bluetooth settings first.",
+                        text     = "No paired devices yet.",
                         color    = subtleColor,
                         fontSize = 12.sp
                     )
+                    Spacer(Modifier.height(12.dp))
                 } else {
                     devices.forEach { name ->
                         Row(
@@ -1069,6 +1073,29 @@ private fun BluetoothPanel(
                         }
                         HorizontalDivider(color = panelBorder)
                     }
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider(color = panelBorder)
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            indication        = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick           = onOpenSystemSettings
+                        )
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text     = "PAIR A DEVICE",
+                        color    = accent,
+                        fontSize = 12.sp,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
                 }
             }
         }

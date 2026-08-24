@@ -24,8 +24,8 @@ android {
         applicationId  = "com.openlauncher.app"
         minSdk         = 21
         targetSdk      = 36
-        versionCode    = 6
-        versionName    = "0.0.5"
+        versionCode    = 20
+        versionName    = "1.0.0"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
 
         // ONNX Runtime bundles native libs for every ABI by default; this
