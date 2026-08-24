@@ -50,6 +50,14 @@
     <!-- Query all packages required on API 30+ for getInstalledApplications -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- Confirmed on-device: even with OpenLauncher correctly set as the
+         default home app, the OEM launcher still wins actual cold-boot
+         foreground — it very likely self-launches from its own
+         BOOT_COMPLETED receiver, a mechanism that isn't gated by "who's
+         the default home app" at all. This gives OpenLauncher the same
+         self-assertion to compete on equal footing. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Required on API 30+ so PackageManager returns ALL launcher apps -->
     <queries>
         <intent>
@@ -84,6 +92,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Fires MainActivity right after boot, singleTask so this brings
+             an existing instance forward rather than duplicating it. Best
+             effort — Android 10+ background-activity-start restrictions
+             mean this isn't guaranteed to win the race against the OEM
+             launcher's own boot receiver, only gives us the same shot it
+             already has. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Notification listener service for MediaSession / Now Playing -->
         <service
