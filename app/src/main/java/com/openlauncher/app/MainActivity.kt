@@ -138,7 +138,6 @@ class MainActivity : ComponentActivity() {
             val isData      by vm.isData.collectAsStateWithLifecycle()
             val isDayModeVM by vm.isDayMode.collectAsStateWithLifecycle()
             val hardwareRadio by vm.hardwareRadio.collectAsStateWithLifecycle()
-            val mcuMediaJsonDebug by vm.mcuMediaJsonDebug.collectAsStateWithLifecycle()
             val systemIsDark = isSystemInDarkTheme()
             val isDayMode = if (settings.dayNightMode == DayNightMode.SYSTEM) !systemIsDark else isDayModeVM
             val pickerSlot      by vm.shortcutPickerSlot.collectAsStateWithLifecycle()
@@ -194,6 +193,13 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.RequestPermission()
             ) { granted -> if (granted) bluetoothPanelOpen = true }
             val onRequestBluetoothPanel: () -> Unit = {
+                // Assigned via long-press (see onLongClickBluetoothTile below) —
+                // some units have a second Bluetooth radio (hands-free calls)
+                // only reachable through a vendor app, not Android's Bluetooth
+                // APIs our own panel is built on. Skips our panel entirely when set.
+                if (settings.bluetoothAppPackage.isNotEmpty()) {
+                    vm.launchApp(settings.bluetoothAppPackage)
+                } else {
                 val granted = android.os.Build.VERSION.SDK_INT < 31 ||
                     ContextCompat.checkSelfPermission(micContext, Manifest.permission.BLUETOOTH_CONNECT) ==
                         android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -202,7 +208,9 @@ class MainActivity : ComponentActivity() {
                 } else {
                     bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
                 }
+                }
             }
+            val onLongClickBluetoothTile: () -> Unit = { vm.startBluetoothPicker() }
             // Settings.Panel.ACTION_WIFI is the system's own bottom-sheet-style
             // panel — the only way to actually add/switch a network (apps
             // haven't been able to drive that flow themselves since API 29).
@@ -432,6 +440,7 @@ class MainActivity : ComponentActivity() {
                                         onRequestWifiPanel       = { wifiPanelOpen = true },
                                         onDismissWifiPanel       = { wifiPanelOpen = false },
                                         onRequestBluetoothPanel  = onRequestBluetoothPanel,
+                                        onLongClickBluetoothTile = onLongClickBluetoothTile,
                                         bluetoothPanelOpen       = bluetoothPanelOpen,
                                         onDismissBluetoothPanel  = { bluetoothPanelOpen = false },
                                         pairedBluetoothDeviceNames = { vm.pairedBluetoothDeviceNames() },
@@ -450,6 +459,7 @@ class MainActivity : ComponentActivity() {
                                             com.openlauncher.app.viewmodel.LauncherViewModel.AppPickerTarget.ANDROID_AUTO -> "CHOOSE ANDROID AUTO APP"
                                             com.openlauncher.app.viewmodel.LauncherViewModel.AppPickerTarget.PIP          -> "CHOOSE PIP APP"
                                             com.openlauncher.app.viewmodel.LauncherViewModel.AppPickerTarget.RADIO        -> "CHOOSE RADIO APP"
+                                            com.openlauncher.app.viewmodel.LauncherViewModel.AppPickerTarget.BLUETOOTH    -> "CHOOSE BLUETOOTH APP"
                                             else -> "CHOOSE CARPLAY APP"
                                         },
                                         accent              = accent,
@@ -468,8 +478,7 @@ class MainActivity : ComponentActivity() {
                                         onPreviewVoice  = { name -> vm.previewVoice(name) },
                                         onRetryTts      = { vm.ensureTts() },
                                         hasLocationFix  = location != null,
-                                        hasMagnetometer = vm.hasMagnetometer,
-                                        mcuMediaJsonDebug = mcuMediaJsonDebug
+                                        hasMagnetometer = vm.hasMagnetometer
                                     )
                                 }
                             }

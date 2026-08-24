@@ -167,6 +167,7 @@ fun HomeScreen(
     onConnectBluetoothDevice: (String) -> Unit = {},
     onDisconnectBluetoothDevice: (String) -> Unit = {},
     onOpenSystemBluetoothSettings: () -> Unit = {}, // pairing itself has no in-app equivalent — see BluetoothPanel
+    onLongClickBluetoothTile: () -> Unit = {}, // long-press the rail tile to assign a different app to open instead (e.g. an OEM app for a second Bluetooth radio our own panel can't reach)
     hardwareRadio: com.openlauncher.app.viewmodel.LauncherViewModel.HardwareRadioState? = null,
     onLaunchHardwareRadio: () -> Unit = {},
     onStopHardwareRadio: () -> Unit = {},
@@ -701,6 +702,7 @@ fun HomeScreen(
             onVolumeDown = onVolumeDown,
             onOpenWifiPanel = onRequestWifiPanel,
             onOpenBluetoothPanel = onRequestBluetoothPanel,
+            onLongClickBluetoothTile = onLongClickBluetoothTile,
             modifier = Modifier
                 .width(60.dp)
                 .fillMaxHeight()
@@ -838,6 +840,7 @@ private fun ControlRail(
     onVolumeDown: () -> Unit,
     onOpenWifiPanel: () -> Unit,
     onOpenBluetoothPanel: () -> Unit,
+    onLongClickBluetoothTile: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listening = voiceState == com.openlauncher.app.viewmodel.LauncherViewModel.VoiceAssistantState.LISTENING
@@ -880,7 +883,7 @@ private fun ControlRail(
         RailTile(size = 36.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onOpenWifiPanel) {
             Icon(Icons.Default.Wifi, contentDescription = "WiFi", tint = if (wifiOn) accent else inactiveTint, modifier = Modifier.size(17.dp))
         }
-        RailTile(size = 36.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onOpenBluetoothPanel) {
+        RailTile(size = 36.dp, accent = accent, widgetBg = widgetBg, widgetBorder = widgetBorder, onClick = onOpenBluetoothPanel, onLongClick = onLongClickBluetoothTile) {
             Icon(Icons.Default.Bluetooth, contentDescription = "Bluetooth", tint = if (btOn) accent else inactiveTint, modifier = Modifier.size(17.dp))
         }
 
@@ -928,6 +931,7 @@ private fun ControlRail(
  * elevation/shadow) rather than a Material filled circular FAB, which read
  * as a foreign UI-kit element glued on top of this dashboard's HUD look.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RailTile(
     size: Dp,
@@ -935,6 +939,7 @@ private fun RailTile(
     widgetBg: Color,
     widgetBorder: Color,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
@@ -945,11 +950,12 @@ private fun RailTile(
             .clip(WIDGET_RADIUS)
             .background(widgetBg)
             .border(1.dp, widgetBorder, WIDGET_RADIUS)
-            .clickable(
+            .combinedClickable(
                 enabled           = enabled,
                 indication        = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onClick           = onClick
+                onClick           = onClick,
+                onLongClick       = onLongClick
             ),
         contentAlignment = Alignment.Center
     ) {

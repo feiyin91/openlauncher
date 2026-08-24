@@ -155,7 +155,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     // ── CarPlay / Android Auto picker ─────────────────────────────────────────
-    enum class AppPickerTarget { CARPLAY, ANDROID_AUTO, PIP, RADIO }
+    enum class AppPickerTarget { CARPLAY, ANDROID_AUTO, PIP, RADIO, BLUETOOTH }
 
     private val _appPickerTarget = MutableStateFlow<AppPickerTarget?>(null)
     val carPlayPickerActive: StateFlow<Boolean> = MutableStateFlow(false) // kept for compat
@@ -181,12 +181,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _nav.value = NavDestination.APP_LIBRARY
     }
 
+    fun startBluetoothPicker() {
+        _appPickerTarget.value = AppPickerTarget.BLUETOOTH
+        _nav.value = NavDestination.APP_LIBRARY
+    }
+
     fun assignPickerApp(app: AppInfo) {
         when (_appPickerTarget.value) {
             AppPickerTarget.CARPLAY      -> updateSettings { copy(carPlayPackage = app.packageName) }
             AppPickerTarget.ANDROID_AUTO -> updateSettings { copy(androidAutoPackage = app.packageName) }
             AppPickerTarget.PIP          -> updateSettings { copy(pipAppPackage = app.packageName) }
             AppPickerTarget.RADIO        -> updateSettings { copy(radioPackage = app.packageName) }
+            AppPickerTarget.BLUETOOTH    -> updateSettings { copy(bluetoothAppPackage = app.packageName) }
             null -> {}
         }
         _appPickerTarget.value = null
@@ -197,6 +203,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun clearAndroidAutoApp()  { updateSettings { copy(androidAutoPackage = "") } }
     fun clearPipApp()          { updateSettings { copy(pipAppPackage = "") } }
     fun clearRadioApp()        { updateSettings { copy(radioPackage = "") } }
+    fun clearBluetoothApp()    { updateSettings { copy(bluetoothAppPackage = "") } }
 
     fun updateWidgetConfig(id: String, spanX: Int, spanY: Int) {
         updateSettings {
@@ -682,33 +689,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private var radioObserver: ContentObserver? = null
 
-    // Named "MEDIA", not "RADIO" — worth checking on-device whether this
-    // vendor MCU bridge also carries Bluetooth A2DP track metadata (title/
-    // artist) while music plays through the unit's separate hands-free
-    // Bluetooth chip, which Android's own media session APIs can never see
-    // (that audio path never touches the Android SoC at all). Only
-    // mediaTitle is actually parsed today (see parseRadioJson) — this is
-    // the raw JSON so the full field set is visible with no logcat access
-    // on this ROM. Shown in Settings; safe to remove once answered either way.
-    private val _mcuMediaJsonDebug = MutableStateFlow("not read yet")
-    val mcuMediaJsonDebug: StateFlow<String> = _mcuMediaJsonDebug
-
-    private fun refreshMcuMediaDebug() {
-        _mcuMediaJsonDebug.value = runCatching {
-            AndroidSettings.Global.getString(
-                getApplication<Application>().contentResolver, "SYS_MEDIA_INFO_JSON"
-            ) ?: "(null)"
-        }.getOrElse { "read failed: ${it.message}" }
-    }
-
     private fun startHardwareRadioObserver() {
         if (radioObserver != null) return
         _mcuRadio.value = parseRadioJson()
-        refreshMcuMediaDebug()
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 _mcuRadio.value = parseRadioJson()
-                refreshMcuMediaDebug()
             }
         }
         getApplication<Application>().contentResolver.registerContentObserver(

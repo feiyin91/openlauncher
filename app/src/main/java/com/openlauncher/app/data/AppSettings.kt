@@ -117,6 +117,11 @@ data class AppSettings(
     val pipAppPackage: String = "",
     // Head unit's radio app — mirrored & controlled via its MediaSession
     val radioPackage: String = "",
+    // Long-press the rail's Bluetooth tile to assign — some units have a
+    // second Bluetooth radio (hands-free calls) only reachable through the
+    // vendor's own app, not Android's Bluetooth APIs at all. Set, this
+    // launches that app directly instead of our own Bluetooth panel.
+    val bluetoothAppPackage: String = "",
     val onboardingCompleted: Boolean = false,
     val showVitals: Boolean = false,
     val showTripTracker: Boolean = false,
