@@ -850,15 +850,21 @@ private fun ControlRail(
         (context.applicationContext.getSystemService(android.content.Context.BLUETOOTH_SERVICE)
             as? android.bluetooth.BluetoothManager)?.adapter
     }
+    // BluetoothAdapter.isEnabled() requires BLUETOOTH_CONNECT on API 31+ and
+    // throws SecurityException without it — confirmed on-device as a real
+    // crash, unguarded, on the very first composition of this rail right
+    // after onboarding finishes (BLUETOOTH_CONNECT isn't requested until the
+    // driver actually opens the Bluetooth panel or uses a voice command, so
+    // a fresh install reaches this composable without it every time).
     var wifiOn by remember { mutableStateOf(wifiManager?.isWifiEnabled == true) }
-    var btOn by remember { mutableStateOf(btAdapter?.isEnabled == true) }
+    var btOn by remember { mutableStateOf(runCatching { btAdapter?.isEnabled == true }.getOrDefault(false)) }
     // Same 2s poll the Clock widget's own WiFi/Bluetooth icons used — no
     // broadcast exists for "radio enabled" that's worth registering a
     // receiver for just to save a cheap poll.
     LaunchedEffect(Unit) {
         while (true) {
             wifiOn = wifiManager?.isWifiEnabled == true
-            btOn = btAdapter?.isEnabled == true
+            btOn = runCatching { btAdapter?.isEnabled == true }.getOrDefault(false)
             kotlinx.coroutines.delay(2000)
         }
     }
