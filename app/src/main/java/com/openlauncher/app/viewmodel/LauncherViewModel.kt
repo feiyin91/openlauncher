@@ -49,6 +49,7 @@ import com.openlauncher.app.model.NavDestination
 import com.openlauncher.app.model.NowPlayingState
 import com.openlauncher.app.model.VoiceActionResult
 import com.openlauncher.app.model.WeatherState
+import com.openlauncher.app.model.HourlyPoint
 import com.openlauncher.app.service.MediaListenerService
 import com.openlauncher.app.util.GeminiLiveTranscriber
 import com.openlauncher.app.util.currentDayKey
@@ -478,12 +479,50 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // Re-evaluated every minute: a parked car produces no location updates
+    // (minDistance filters), so AUTO mode (and the weather panel's re-slice
+    // against "now," below) must also flip on time alone. Declared up here,
+    // ahead of every property that reads it, since Kotlin initializes class
+    // body properties strictly top-to-bottom.
+    private val minuteTicker = flow { while (true) { emit(Unit); delay(60_000L) } }
+
     // ── Weather ───────────────────────────────────────────────────────────────
-    private val _weather = MutableStateFlow<WeatherState?>(null)
-    val weather: StateFlow<WeatherState?> = _weather
+    // No separate "live" state — every successful fetch is persisted
+    // immediately (see fetchWeather), so AppSettings.cachedWeather /
+    // cachedWeatherAtMs is the single source of truth for both "what's on
+    // screen right now" and "what to fall back to when offline." Re-sliced
+    // against the current time on every read (see upcomingWeatherSlice) so a
+    // forecast fetched hours ago doesn't show hours that have already passed.
+    val weather: StateFlow<WeatherState?> = combine(settings, minuteTicker) { s, _ -> s.cachedWeather }
+        .map { it?.let { w -> w.copy(hourlyForecast = upcomingWeatherSlice(w.hourlyForecast, System.currentTimeMillis())) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    // Null once nothing has ever been fetched; otherwise when that cached
+    // data was actually obtained, live or not — the widget shows this as
+    // "as of HH:MM" so a stale offline reading never passes as current.
+    val weatherAsOfMillis: StateFlow<Long?> = settings
+        .map { it.cachedWeatherAtMs.takeIf { ms -> ms > 0 } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _weatherError = MutableStateFlow<String?>(null)
     val weatherError: StateFlow<String?> = _weatherError
+
+    /**
+     * Keeps only points at or after the current hour, nearest first — shared
+     * by the live-display slice above and by fetchWeather's own parsing.
+     * Floors to the start of the current hour the same way fetchWeather
+     * derives each point's own timestamp (format-then-reparse through the
+     * device's default timezone) rather than a raw millis/3600000 divide —
+     * that only floors to whole-hour *UTC* boundaries, which silently
+     * breaks for the (uncommon but real) half-hour-offset timezones.
+     */
+    private fun upcomingWeatherSlice(points: List<HourlyPoint>, nowMillis: Long, count: Int = 6): List<HourlyPoint> {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
+        val hourFloor = runCatching { fmt.parse(fmt.format(java.util.Date(nowMillis)))?.time }.getOrNull() ?: nowMillis
+        return points.filter { it.timestampMillis >= hourFloor }
+            .sortedBy { it.timestampMillis }
+            .take(count)
+    }
 
     private var weatherJob: Job? = null
     // Stamped on successful fetch only (see fetchWeather/fetchPlaceName) — if these
@@ -509,23 +548,28 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 resp.currentWeather?.let { cw ->
                     // Open-Meteo's hourly block is parallel arrays keyed by ISO timestamp
                     // ("2026-08-12T23:00") — keep only points from the current hour onward
-                    // so the strip reads as "coming up," not partly-past.
-                    val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
-                        .format(java.util.Date())
+                    // so the strip reads as "coming up," not partly-past. Request already
+                    // covers forecast_days=2 (~48h) — kept in full now, not sliced to 6
+                    // here, so there's still real forecast left to fall back to hours from
+                    // now if this device goes offline before the next successful fetch
+                    // (see upcomingWeatherSlice, applied wherever this is actually shown).
+                    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
+                    val nowIso = fmt.format(java.util.Date())
                     val hourly = resp.hourly
                     val currentHourIndices = hourly?.time?.indices
-                        ?.filter { hourly.time[it] >= nowIso }
-                        ?.take(6) ?: emptyList()
+                        ?.filter { hourly.time[it] >= nowIso } ?: emptyList()
                     val forecast = if (hourly != null) {
                         currentHourIndices.mapNotNull { i ->
-                                val hourStr = hourly.time.getOrNull(i)?.takeLast(5)?.take(2) ?: return@mapNotNull null
+                                val timeStr = hourly.time.getOrNull(i) ?: return@mapNotNull null
+                                val hourStr = timeStr.takeLast(5).take(2)
                                 val hour = hourStr.toIntOrNull() ?: return@mapNotNull null
                                 com.openlauncher.app.model.HourlyPoint(
                                     hour               = hour,
                                     temperatureCelsius = hourly.temperature2m.getOrNull(i) ?: return@mapNotNull null,
                                     weatherCode        = hourly.weathercode.getOrNull(i) ?: 0,
                                     isDay              = hour in 6..17,
-                                    precipitationChance = hourly.precipitationProbability.getOrNull(i) ?: 0
+                                    precipitationChance = hourly.precipitationProbability.getOrNull(i) ?: 0,
+                                    timestampMillis    = runCatching { fmt.parse(timeStr)?.time }.getOrNull() ?: 0L
                                 )
                             }
                     } else emptyList()
@@ -534,7 +578,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     val feelsLike = currentHourIndices.firstOrNull()
                         ?.let { hourly?.apparentTemperature?.getOrNull(it) } ?: cw.temperature
 
-                    _weather.value = WeatherState(
+                    val newState = WeatherState(
                         temperatureCelsius = cw.temperature,
                         weatherCode       = cw.weathercode,
                         windspeedKmh      = cw.windspeed,
@@ -542,6 +586,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         hourlyForecast    = forecast,
                         feelsLikeCelsius  = feelsLike
                     )
+                    updateSettings { copy(cachedWeather = newState, cachedWeatherAtMs = System.currentTimeMillis()) }
                 }
                 _weatherError.value = null
                 lastWeatherFetchMs = System.currentTimeMillis()
@@ -558,7 +603,32 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _placeName = MutableStateFlow<String?>(null)
     val placeName: StateFlow<String?> = _placeName
 
+    // ~111m grid at the equator (less at higher latitudes) — tight enough to
+    // stay within one real neighbourhood, loose enough that GPS jitter and
+    // normal route variation on a repeat drive still land on the same key.
+    private fun placeCacheKey(lat: Double, lon: Double) = "%.3f,%.3f".format(lat, lon)
+
+    /** Shared by both the live-fetch path and a cache hit, so a change to Location Detail Level applies to cached spots too, not just newly-fetched ones. */
+    private fun resolvePlaceName(entry: com.openlauncher.app.model.PlaceNameCacheEntry, detailLevel: com.openlauncher.app.data.LocationDetailLevel): String? =
+        when (detailLevel) {
+            com.openlauncher.app.data.LocationDetailLevel.NEIGHBORHOOD -> when {
+                entry.fine != null && entry.broader != null && entry.fine != entry.broader -> "${entry.broader}, ${entry.fine}"
+                entry.fine != null -> entry.fine
+                else -> entry.broader
+            }
+            com.openlauncher.app.data.LocationDetailLevel.CITY -> entry.broader
+            com.openlauncher.app.data.LocationDetailLevel.REGION -> entry.state ?: entry.county ?: entry.broader
+        } ?: entry.displayNameFallback
+
     fun fetchPlaceName(lat: Double, lon: Double) {
+        val key = placeCacheKey(lat, lon)
+        settings.value.placeNameCache[key]?.let { cached ->
+            resolvePlaceName(cached, settings.value.locationDetailLevel)?.let {
+                _placeName.value = it
+                lastPlaceFetchMs = System.currentTimeMillis()
+            }
+            return // same spot already geocoded — skip Nominatim entirely
+        }
         viewModelScope.launch {
             try {
                 val resp = com.openlauncher.app.data.NominatimApi.service.reverseGeocode(lat, lon)
@@ -573,20 +643,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 // Paired as "Broader, Fine" — e.g. "Singapore, Boon Keng" or
                 // "Johor Bahru, Megah Ria" — not paired with state, which is often
                 // too coarse to add anything (and Singapore has no state at all).
-                val broader = addr?.city ?: addr?.town ?: addr?.village ?: addr?.county ?: addr?.state
-                val fine = addr?.neighbourhood ?: addr?.quarter ?: addr?.suburb ?: addr?.cityDistrict
-                val resolved = when (settings.value.locationDetailLevel) {
-                    com.openlauncher.app.data.LocationDetailLevel.NEIGHBORHOOD -> when {
-                        fine != null && broader != null && fine != broader -> "$broader, $fine"
-                        fine != null -> fine
-                        else -> broader
-                    }
-                    com.openlauncher.app.data.LocationDetailLevel.CITY -> broader
-                    com.openlauncher.app.data.LocationDetailLevel.REGION -> addr?.state ?: addr?.county ?: broader
-                } ?: resp.displayName?.split(",")?.map { it.trim() }?.take(2)?.joinToString(", ")
+                val entry = com.openlauncher.app.model.PlaceNameCacheEntry(
+                    broader = addr?.city ?: addr?.town ?: addr?.village ?: addr?.county ?: addr?.state,
+                    fine    = addr?.neighbourhood ?: addr?.quarter ?: addr?.suburb ?: addr?.cityDistrict,
+                    state   = addr?.state,
+                    county  = addr?.county,
+                    displayNameFallback = resp.displayName?.split(",")?.map { it.trim() }?.take(2)?.joinToString(", ")
+                )
+                val resolved = resolvePlaceName(entry, settings.value.locationDetailLevel)
                 if (resolved != null) {
                     _placeName.value = resolved
                     lastPlaceFetchMs = System.currentTimeMillis()
+                    updateSettings {
+                        // ponytail: unbounded map growth over months of varied
+                        // driving — cheap safety valve (just start over) rather
+                        // than real LRU eviction, since realistic growth here is
+                        // bounded by route diversity, not time, and a few
+                        // hundred short entries is trivial either way.
+                        val base = if (placeNameCache.size >= 1000) emptyMap() else placeNameCache
+                        copy(placeNameCache = base + (key to entry))
+                    }
                 }
             } catch (_: Exception) {
                 // transient network hiccup — leave the last known place name showing,
@@ -603,10 +679,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0f)
     val hasAccelerometer: Boolean = locationMgr.hasAccelerometer
     val hasMagnetometer: Boolean = locationMgr.hasMagnetometer
-
-    // Re-evaluated every minute: a parked car produces no location updates
-    // (minDistance filters), so AUTO mode must also flip on time alone.
-    private val minuteTicker = flow { while (true) { emit(Unit); delay(60_000L) } }
 
     val isDayMode: StateFlow<Boolean> = combine(settings, locationMgr.location, minuteTicker) { s, loc, _ ->
         when (s.dayNightMode) {

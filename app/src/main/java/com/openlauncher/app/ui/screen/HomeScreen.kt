@@ -113,6 +113,7 @@ private fun canAddWidget(settings: com.openlauncher.app.data.AppSettings): Boole
 fun HomeScreen(
     settings: AppSettings,
     weather: WeatherState?,
+    weatherAsOfMillis: Long? = null,
     nowPlaying: NowPlayingState?,
     location: LocationData?,
     placeName: String? = null,
@@ -566,6 +567,7 @@ fun HomeScreen(
                         )
                         "WEATHER" -> WeatherWidget(
                             state      = weather,
+                            asOfMillis = weatherAsOfMillis,
                             accent     = accent,
                             metric     = settings.unitSystem.name == "METRIC",
                             isDayMode  = isDayMode,

@@ -5,7 +5,13 @@ data class HourlyPoint(
     val temperatureCelsius: Double,
     val weatherCode: Int,
     val isDay: Boolean,
-    val precipitationChance: Int = 0   // 0-100, percent
+    val precipitationChance: Int = 0,   // 0-100, percent
+    // Exact local-time instant this point is for — hour alone can't tell
+    // "3am today" from "3am tomorrow" once a cached forecast spans more
+    // than a day, which it now does (see LauncherViewModel.fetchWeather).
+    // Default 0L is safe: a point that old just never survives the
+    // "still upcoming" filter, same as if it weren't cached at all.
+    val timestampMillis: Long = 0L
 ) {
     fun temperatureDisplay(metric: Boolean): String =
         if (metric) "${Math.round(temperatureCelsius)}°" else "${Math.round(celsiusToFahrenheit(temperatureCelsius))}°"

@@ -130,6 +130,7 @@ class MainActivity : ComponentActivity() {
             val appsLoading by vm.appsLoading.collectAsStateWithLifecycle()
             val nowPlaying  by vm.nowPlaying.collectAsStateWithLifecycle()
             val weather     by vm.weather.collectAsStateWithLifecycle()
+            val weatherAsOfMillis by vm.weatherAsOfMillis.collectAsStateWithLifecycle()
             val placeName   by vm.placeName.collectAsStateWithLifecycle()
             val voltage     by vm.voltage.collectAsStateWithLifecycle()
             val location    by vm.location.collectAsStateWithLifecycle()
@@ -401,6 +402,7 @@ class MainActivity : ComponentActivity() {
                                     HomeScreen(
                                         settings            = settings,
                                         weather             = weather,
+                                        weatherAsOfMillis   = weatherAsOfMillis,
                                         nowPlaying          = nowPlaying,
                                         location            = location,
                                         placeName           = placeName,

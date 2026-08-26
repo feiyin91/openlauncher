@@ -20,6 +20,10 @@ import kotlin.math.absoluteValue
 @Composable
 fun WeatherWidget(
     state: WeatherState?,
+    // Null = this fetch is as current as the app ever knows anything to be.
+    // Non-null = state is a cached/offline fallback obtained at this time —
+    // see LauncherViewModel.weatherAsOfMillis.
+    asOfMillis: Long? = null,
     accent: Color,
     metric: Boolean,
     isDayMode: Boolean = false,
@@ -70,6 +74,20 @@ fun WeatherWidget(
                             fontSize      = 9.sp,
                             letterSpacing = 1.sp
                         )
+                        if (asOfMillis != null) {
+                            Text(
+                                // Offline/cache fallback — the whole point is
+                                // making clear this isn't a live reading, so
+                                // this stays visible regardless of how old it
+                                // actually is rather than hiding under some
+                                // "still fresh enough" cutoff.
+                                text     = "as of " + java.text.SimpleDateFormat("h:mm a", java.util.Locale.US)
+                                    .format(java.util.Date(asOfMillis)),
+                                color    = subColor.copy(alpha = 0.7f),
+                                fontSize = 8.sp,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
                         if (placeName != null) {
                             Text(
                                 text          = placeName,

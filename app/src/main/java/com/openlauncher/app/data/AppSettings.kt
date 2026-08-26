@@ -155,6 +155,16 @@ data class AppSettings(
     // Now Playing panel enrichment
     val showNowPlayingSourceBadge: Boolean = true,
     val use24HourFormat: Boolean = true,
+    // Last successful weather fetch, kept around so the panel can show
+    // something (labeled with how old it is) instead of going blank the
+    // moment the connection drops — see LauncherViewModel.fetchWeather.
+    val cachedWeather: com.openlauncher.app.model.WeatherState? = null,
+    val cachedWeatherAtMs: Long = 0L,
+    // Reverse-geocoded place names, keyed by a rounded "lat,lon" string —
+    // driving the same routes repeatedly means most stops are already in
+    // here, so a cache hit skips Nominatim entirely instead of just falling
+    // back to raw coordinates when offline. See LauncherViewModel.placeCacheKey.
+    val placeNameCache: Map<String, com.openlauncher.app.model.PlaceNameCacheEntry> = emptyMap(),
     // Empty = system default TTS voice. Actual available voices depend on
     // what's installed on the device's ROM — populated at runtime, not a
     // fixed list, since this varies per unit/TTS engine.

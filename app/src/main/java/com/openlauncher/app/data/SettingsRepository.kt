@@ -78,6 +78,9 @@ class SettingsRepository(private val context: Context) {
         val SHOW_QUICK_TOGGLES_IN_CLOCK = booleanPreferencesKey("show_quick_toggles_in_clock")
         val SHOW_NOW_PLAYING_SOURCE_BADGE = booleanPreferencesKey("show_now_playing_source_badge")
         val USE_24_HOUR_FORMAT    = booleanPreferencesKey("use_24_hour_format")
+        val CACHED_WEATHER_JSON   = stringPreferencesKey("cached_weather_json")
+        val CACHED_WEATHER_AT_MS  = longPreferencesKey("cached_weather_at_ms")
+        val PLACE_NAME_CACHE_JSON = stringPreferencesKey("place_name_cache_json")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data
@@ -176,7 +179,18 @@ class SettingsRepository(private val context: Context) {
                 showSunriseSunset = prefs[Keys.SHOW_SUNRISE_SUNSET] ?: defaults.showSunriseSunset,
                 showQuickTogglesInClock = prefs[Keys.SHOW_QUICK_TOGGLES_IN_CLOCK] ?: defaults.showQuickTogglesInClock,
                 showNowPlayingSourceBadge = prefs[Keys.SHOW_NOW_PLAYING_SOURCE_BADGE] ?: defaults.showNowPlayingSourceBadge,
-                use24HourFormat  = prefs[Keys.USE_24_HOUR_FORMAT] ?: defaults.use24HourFormat
+                use24HourFormat  = prefs[Keys.USE_24_HOUR_FORMAT] ?: defaults.use24HourFormat,
+                cachedWeather    = prefs[Keys.CACHED_WEATHER_JSON]?.let {
+                    runCatching { gson.fromJson(it, com.openlauncher.app.model.WeatherState::class.java) }.getOrNull()
+                } ?: defaults.cachedWeather,
+                cachedWeatherAtMs = prefs[Keys.CACHED_WEATHER_AT_MS] ?: defaults.cachedWeatherAtMs,
+                placeNameCache   = prefs[Keys.PLACE_NAME_CACHE_JSON]?.let {
+                    runCatching {
+                        gson.fromJson<Map<String, com.openlauncher.app.model.PlaceNameCacheEntry>>(
+                            it, object : TypeToken<Map<String, com.openlauncher.app.model.PlaceNameCacheEntry>>() {}.type
+                        )
+                    }.getOrNull()
+                } ?: defaults.placeNameCache
             )
     }
 
@@ -252,6 +266,9 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.SHOW_QUICK_TOGGLES_IN_CLOCK] = s.showQuickTogglesInClock
             prefs[Keys.SHOW_NOW_PLAYING_SOURCE_BADGE] = s.showNowPlayingSourceBadge
             prefs[Keys.USE_24_HOUR_FORMAT] = s.use24HourFormat
+            if (s.cachedWeather != null) prefs[Keys.CACHED_WEATHER_JSON] = gson.toJson(s.cachedWeather)
+            prefs[Keys.CACHED_WEATHER_AT_MS] = s.cachedWeatherAtMs
+            prefs[Keys.PLACE_NAME_CACHE_JSON] = gson.toJson(s.placeNameCache)
     }
 
     suspend fun resetToDefaults() {
